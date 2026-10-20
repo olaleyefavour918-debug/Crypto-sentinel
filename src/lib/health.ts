@@ -62,7 +62,7 @@ export interface ConfigStatus {
   database: boolean;
   adminPassword: boolean;
   cronSecret: boolean;
-  emailProvider: "resend" | "brevo" | null;
+  emailProvider: "smtp" | "resend" | "brevo" | null;
   emailConfigured: boolean;
   emailIssue: string | null;
   deliveryConfirmation: boolean;

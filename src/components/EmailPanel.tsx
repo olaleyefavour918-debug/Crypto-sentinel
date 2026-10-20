@@ -32,7 +32,7 @@ export default function EmailPanel({ email, notifications, onChanged }: { email:
         <div className="sm:text-right"><Btn variant="primary" onClick={sendTest} disabled={busy || !email.configured}>{busy ? "Sending…" : "Send test email"}</Btn></div>
       </dl>
       {!email.configured && (
-        <div className="mt-4"><Notice tone="bad" title="Emails cannot be sent yet">{email.issue ?? "No email provider key is set."} Add the key in your hosting environment variables and redeploy. BUY/SELL alerts are still recorded and will be sent once a provider is connected (alerts older than 24 h are not sent).</Notice></div>
+        <div className="mt-4"><Notice tone="bad" title="Emails cannot be sent yet">{email.issue ?? "No email sender is set up."} Add the key in your hosting environment variables and redeploy. BUY/SELL alerts are still recorded and will be sent once a provider is connected (alerts older than 24 h are not sent).</Notice></div>
       )}
       {result && <div className="mt-4"><Notice tone={result.ok ? "good" : "bad"} title={result.ok ? "Test email handed to the provider" : "Test email failed"}>{result.text}</Notice></div>}
 

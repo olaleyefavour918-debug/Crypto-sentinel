@@ -61,6 +61,8 @@ Project → **Settings → Environment Variables** (apply to Production):
 2. Create an API key → put it in `RESEND_API_KEY`.
 
 Why that exact address: Resend's free test sender (`onboarding@resend.dev`) can **only deliver to the email your Resend account was created with**; any other recipient is rejected with HTTP 403. To send to a different recipient, verify a domain at resend.com/domains and set `EMAIL_FROM="Crypto Sentinel <alerts@yourdomain.com>"`.
+*No third-party service (built-in SMTP):* set `SMTP_USER` (your Gmail address) and `SMTP_PASS` (a Gmail **App Password**: Google Account → Security → 2-Step Verification on → App passwords; 16 characters, *not* your normal password). The app then sends through Gmail's own server (`smtp.gmail.com:465`, TLS, certificate always verified). If set it takes priority over Resend/Brevo. Mail you send from your own Gmail to itself normally lands in the inbox, but the receiving mailbox is the only real proof — use **Send test email** and check inbox + spam. SMTP gives "accepted by the mail server", never a "delivered" confirmation. Tested here only against a local fake TLS SMTP server, not against live Gmail.
+
 *Alternative:* Brevo — set `BREVO_API_KEY` and `EMAIL_FROM` to a single sender address you verified there (no domain needed).
 Your normal Gmail password or codes are **never** needed or requested.
 

@@ -3,11 +3,14 @@ import type { Db, Queryable, Row } from "./db";
 import { logger } from "./logger";
 import { baseOf, fmtPrice, pairLabel } from "./format";
 import { fmtUtc } from "./time";
+import { sendSmtp, type SmtpOptions } from "./smtp";
 import type { Settings, TimeframeSnapshot } from "./types";
 
 /**
  * Email alerts. Credentials are read from server-side environment variables only; they are never sent to the
- * browser, stored in the database, or logged. Two REST providers are supported (no SMTP, no Gmail password):
+ * browser, stored in the database, or logged. Three senders are supported:
+ *   • SMTP    (SMTP_USER + SMTP_PASS, built in, no third-party service) – e.g. your own Gmail with an App Password
+ *             (never your normal password). Takes priority when configured.
  *   • Resend  (RESEND_API_KEY)  – free test sender works if the Resend account email == the recipient.
  *   • Brevo   (BREVO_API_KEY + EMAIL_FROM) – single verified sender address, no domain needed.
  *
@@ -22,7 +25,7 @@ import type { Settings, TimeframeSnapshot } from "./types";
  */
 
 type Env = Record<string, string | undefined>;
-export type ProviderName = "resend" | "brevo";
+export type ProviderName = "smtp" | "resend" | "brevo";
 
 export interface EmailConfig {
   provider: ProviderName | null;
@@ -37,6 +40,14 @@ const STALE_ALERT_MS = 24 * 3600_000;
 
 export function emailConfig(env: Env = process.env): EmailConfig {
   const webhookConfigured = !!env.RESEND_WEBHOOK_SECRET;
+  if (env.SMTP_USER || env.SMTP_PASS) {
+    if (!env.SMTP_USER || !env.SMTP_PASS) {
+      return { provider: "smtp", configured: false, from: "", issue: "SMTP needs both SMTP_USER and SMTP_PASS (for Gmail, an App Password).", webhookConfigured: false };
+    }
+    const from = env.EMAIL_FROM && parseFrom(env.EMAIL_FROM) ? env.EMAIL_FROM : `Crypto Sentinel <${env.SMTP_USER}>`;
+    if (!parseFrom(from)) return { provider: "smtp", configured: false, from: "", issue: "SMTP_USER must be an email address (or set EMAIL_FROM).", webhookConfigured: false };
+    return { provider: "smtp", configured: true, from, issue: null, webhookConfigured: false };
+  }
   if (env.RESEND_API_KEY) {
     return { provider: "resend", configured: true, from: env.EMAIL_FROM || "Crypto Sentinel <onboarding@resend.dev>", issue: null, webhookConfigured };
   }
@@ -46,7 +57,7 @@ export function emailConfig(env: Env = process.env): EmailConfig {
     }
     return { provider: "brevo", configured: true, from: env.EMAIL_FROM, issue: null, webhookConfigured: false };
   }
-  return { provider: null, configured: false, from: "", issue: "No email provider key is set (RESEND_API_KEY or BREVO_API_KEY).", webhookConfigured: false };
+  return { provider: null, configured: false, from: "", issue: "No email provider key is set (SMTP_USER + SMTP_PASS, RESEND_API_KEY or BREVO_API_KEY).", webhookConfigured: false };
 }
 
 export function parseFrom(from: string): { name: string; email: string } | null {
@@ -178,6 +189,7 @@ export interface EmailDeps {
   fetchFn?: typeof fetch;
   env?: Env;
   now?: () => number;
+  smtp?: SmtpOptions;
 }
 
 function safeProviderError(status: number, bodyText: string, provider: ProviderName): string {
@@ -210,6 +222,18 @@ export async function sendViaProvider(
   const env = deps.env ?? process.env;
   const fetchFn = deps.fetchFn ?? fetch;
   try {
+    if (cfg.provider === "smtp") {
+      const sender = parseFrom(cfg.from);
+      if (!sender) return { ok: false, retryable: false, error: "smtp: EMAIL_FROM is not a valid sender" };
+      const port = Number(env.SMTP_PORT) || 465;
+      const r = await sendSmtp(
+        { host: env.SMTP_HOST || "smtp.gmail.com", port, user: env.SMTP_USER ?? "", pass: env.SMTP_PASS ?? "" },
+        { fromName: sender.name, fromEmail: sender.email, to, subject: msg.subject, text: msg.text, html: msg.html },
+        deps.smtp,
+      );
+      if (r.ok) return { ok: true, messageId: `smtp-${r.messageId}` };
+      return { ok: false, retryable: r.retryable, error: r.error.replace(env.SMTP_PASS ?? "\u0000", "[redacted]") };
+    }
     if (cfg.provider === "resend") {
       const res = await fetchFn("https://api.resend.com/emails", {
         method: "POST",

@@ -106,7 +106,7 @@ export function setupChecklist(cfg: { database: boolean; adminPassword: boolean;
     { id: "database", done: cfg.database, title: "Database connected", detail: "Add a Postgres database on Vercel (Storage → Neon). DATABASE_URL is injected automatically." },
     { id: "password", done: cfg.adminPassword, title: "Dashboard password set", detail: "Add ADMIN_PASSWORD (you choose it) in Vercel → Settings → Environment Variables, then redeploy." },
     { id: "cron", done: cfg.cronSecret, title: "Scheduler secret set", detail: "Add CRON_SECRET (32+ random characters). Vercel Cron and external schedulers use it to call /api/cron/monitor." },
-    { id: "email", done: cfg.emailConfigured, title: "Email provider connected", detail: cfg.emailIssue ?? "Add RESEND_API_KEY (or BREVO_API_KEY + EMAIL_FROM)." },
+    { id: "email", done: cfg.emailConfigured, title: "Email provider connected", detail: cfg.emailIssue ?? "Add SMTP_USER + SMTP_PASS (Gmail App Password), or RESEND_API_KEY, or BREVO_API_KEY + EMAIL_FROM." },
     { id: "monitor", done: monitorState === "active" || monitorState === "slow", title: "Monitor is receiving scheduled runs", detail: "Create a 1-minute scheduler (cron-job.org or Vercel Pro). Vercel Hobby cron only runs once a day." },
   ];
 }
