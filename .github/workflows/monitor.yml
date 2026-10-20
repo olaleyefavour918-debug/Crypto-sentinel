@@ -1,0 +1,31 @@
+# OPTIONAL scheduler fallback for Vercel Hobby (whose own cron can only run once a day).
+# Calls the monitor endpoint every 5 minutes. GitHub's schedule is best-effort: runs can be delayed by several
+# minutes, and GitHub pauses scheduled workflows on repositories with no activity for 60 days.
+# For 1-minute checks use an external scheduler (README → "Scheduling") or Vercel Pro cron.
+#
+# Setup: repo → Settings → Secrets and variables → Actions → New repository secret:
+#   APP_URL      e.g. https://your-project.vercel.app   (no trailing slash)
+#   CRON_SECRET  the same value you set in Vercel
+name: monitor
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+permissions: {}
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Call monitor endpoint
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then echo "APP_URL / CRON_SECRET secrets are not set"; exit 1; fi
+          code=$(curl -sS -m 60 -o /tmp/out.json -w "%{http_code}" -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/monitor")
+          echo "HTTP $code"; head -c 600 /tmp/out.json; echo
+          [ "$code" = "200" ]
