@@ -1,0 +1,34 @@
+{
+  "name": "btc-sentinel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BTC/USDT educational paper-trading market monitor. Never places real orders.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --tsconfig tests/tsconfig.json --test --test-concurrency=1 tests/*.test.ts tests/*.test.tsx",
+    "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate.ts"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "lightweight-charts": "^5.0.0",
+    "next": "^15.5.0",
+    "pg": "^8.13.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
