@@ -138,3 +138,5 @@ tests          node:test suites + helpers (mock exchange, mock email provider, D
 * Bybit is the only data source; if it is unreachable the app reports that and does nothing.
 * "Delivered" is only shown when the provider confirms it by webhook (Resend).
 * Charts use `lightweight-charts` v5 in the browser; they were not exercised in a real browser before delivery.
+
+<!-- redeploy trigger: database connected -->
