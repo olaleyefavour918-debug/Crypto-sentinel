@@ -50,7 +50,7 @@ export default function PushPanel() {
       const reg = await navigator.serviceWorker.register("/sw.js");
       await navigator.serviceWorker.ready;
       const existing = await reg.pushManager.getSubscription();
-      const sub = existing ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(k.data.publicKey) }));
+      const sub = existing ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(k.data.publicKey) as unknown as BufferSource }));
       const r = await api("/api/push/subscribe", { method: "POST", body: sub.toJSON() });
       if (!r.ok) throw new Error(errorMessage(r.data, "The server did not save this device."));
       setMsg({ ok: true, text: "This device is subscribed. Tap “Send test notification” to check it." });

@@ -1,4 +1,4 @@
-import { createECDH, createCipheriv, createPrivateKey, createPublicKey, generateKeyPairSync, hkdfSync, randomBytes, sign } from "node:crypto";
+import { createECDH, createCipheriv, createPrivateKey, generateKeyPairSync, hkdfSync, randomBytes, sign } from "node:crypto";
 import type { Db, Queryable, Row } from "./db";
 import { logger } from "./logger";
 import { baseOf, fmtPrice, pairLabel } from "./format";
@@ -104,7 +104,7 @@ export async function sendPush(keys: VapidKeys, sub: PushSubscriptionRow, payloa
         ttl: "3600",
         urgency: "high",
       },
-      body,
+      body: body as unknown as BodyInit,
       signal: AbortSignal.timeout(8_000),
     });
     if (res.status >= 200 && res.status < 300) return { ok: true };
