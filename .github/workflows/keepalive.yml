@@ -1,0 +1,22 @@
+# GitHub disables scheduled workflows after 60 days without repository activity.
+# This job runs on the 1st and 15th of each month and re-enables the "monitor" workflow through the Actions API,
+# which restarts that inactivity timer. It changes no code and sends no email.
+name: keepalive
+on:
+  schedule:
+    - cron: "17 3 1,15 * *"
+  workflow_dispatch: {}
+permissions:
+  actions: write
+  contents: read
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Re-enable the monitor workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/monitor.yml/enable"
+          echo "monitor workflow enabled / timer refreshed"
