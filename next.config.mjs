@@ -36,6 +36,8 @@ const nextConfig = {
       { source: "/:path*", headers: securityHeaders },
       // API responses must never be cached by browsers or CDNs.
       { source: "/api/:path*", headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }] },
+      // The service worker must always be re-fetched so updates reach the phone.
+      { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache, max-age=0" }, { key: "Content-Type", value: "application/javascript; charset=utf-8" }] },
     ];
   },
 };

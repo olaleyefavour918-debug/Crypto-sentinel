@@ -33,7 +33,7 @@ describe("persistence & restarts", () => {
     assert.deepEqual(await runMigrations(x.t.db), []);
     assert.equal((await x.q("select 1 from app_settings")).length, 1);
     assert.deepEqual((await x.q<{ starting_balance: string }>("select starting_balance from paper_account")).map((r) => Number(r.starting_balance)), [65.5]);
-    assert.equal((await x.q("select id from schema_migrations order by id")).length, 2);
+    assert.equal((await x.q("select id from schema_migrations order by id")).length, 3);
   });
 });
 

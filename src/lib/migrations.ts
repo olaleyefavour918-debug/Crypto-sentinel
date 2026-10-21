@@ -201,6 +201,24 @@ create index if not exists signal_evaluations_symbol_idx on signal_evaluations (
 create index if not exists market_snapshots_symbol_idx on market_snapshots (symbol, captured_at desc);
 `,
   },
+  {
+    id: "003_web_push",
+    sql: `
+create table if not exists push_subscriptions (
+  id bigserial primary key,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now(),
+  last_success_at timestamptz,
+  last_error text,
+  failures integer not null default 0
+);
+alter table paper_trades add column if not exists push_sent_at timestamptz;
+-- Trades that exist before push was introduced must never be pushed retroactively.
+update paper_trades set push_sent_at = now() where push_sent_at is null;
+`,
+  },
 ];
 
 const setupMemo = new WeakMap<object, Promise<void>>();

@@ -8,6 +8,9 @@ import { GET as cronGet, POST as cronPost } from "@/app/api/cron/monitor/route";
 import { POST as emailTest } from "@/app/api/email/test/route";
 import { GET as healthGet } from "@/app/api/health/route";
 import { GET as marketGet } from "@/app/api/market/route";
+import { GET as pushKey } from "@/app/api/push/key/route";
+import { DELETE as pushUnsub, POST as pushSub } from "@/app/api/push/subscribe/route";
+import { POST as pushTest } from "@/app/api/push/test/route";
 import { PUT as settingsPut } from "@/app/api/settings/route";
 import { GET as stateGet } from "@/app/api/state/route";
 import { SESSION_COOKIE, signSession } from "@/lib/auth";
@@ -347,6 +350,36 @@ describe("live market endpoint", () => {
     assert.equal(b.ok, false);
     assert.equal(b.ticker, undefined);
     assert.equal(b.h1, undefined);
+  });
+});
+
+describe("push notification endpoints", () => {
+  const EP = "https://fcm.googleapis.com/fcm/send/route-device";
+  const keys = { p256dh: Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 9)]).toString("base64url"), auth: Buffer.alloc(16, 3).toString("base64url") };
+  it("require a signed-in admin (and same-origin for changes)", async () => {
+    assert.equal((await pushKey(request("/api/push/key"))).status, 401);
+    assert.equal((await pushSub(request("/api/push/subscribe", { method: "POST", body: { endpoint: EP, keys } }))).status, 401);
+    assert.equal((await pushTest(request("/api/push/test", { method: "POST", body: {} }))).status, 401);
+    assert.equal((await pushSub(request("/api/push/subscribe", { method: "POST", cookie: true, origin: "https://evil.example", body: { endpoint: EP, keys } }))).status, 403);
+  });
+  it("returns the public key only, and rejects subscriptions to unknown hosts or with bad keys", async () => {
+    const k = await body(await pushKey(request("/api/push/key", { cookie: true })));
+    assert.match(k.publicKey, /^[A-Za-z0-9_-]{87}$/);
+    assert.equal(JSON.stringify(k).includes("privateJwk"), false);
+    assert.equal((await pushSub(request("/api/push/subscribe", { method: "POST", cookie: true, body: { endpoint: "https://evil.example.com/x", keys } }))).status, 400);
+    assert.equal((await pushSub(request("/api/push/subscribe", { method: "POST", cookie: true, body: { endpoint: EP, keys: { p256dh: "x", auth: "y" } } }))).status, 400);
+    assert.equal((await pushSub(request("/api/push/subscribe", { method: "POST", cookie: true, raw: "{nope" }))).status, 400);
+  });
+  it("saves a valid subscription once (idempotent), lists it, and removes it on request", async () => {
+    for (let i = 0; i < 2; i++) assert.equal((await pushSub(request("/api/push/subscribe", { method: "POST", cookie: true, body: { endpoint: EP, keys } }))).status, 200);
+    assert.equal((await body(await pushKey(request("/api/push/key", { cookie: true })))).devices, 1);
+    assert.equal((await pushUnsub(request("/api/push/subscribe", { method: "DELETE", cookie: true, body: { endpoint: EP } }))).status, 200);
+    assert.equal((await body(await pushKey(request("/api/push/key", { cookie: true })))).devices, 0);
+  });
+  it("test notification with no device explains what to do instead of pretending", async () => {
+    const r = await pushTest(request("/api/push/test", { method: "POST", cookie: true, body: {} }));
+    assert.equal(r.status, 409);
+    assert.match((await body(r)).message, /Enable notifications/);
   });
 });
 

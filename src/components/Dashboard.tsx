@@ -7,6 +7,7 @@ import { api, errorMessage, type AppState, type MarketView } from "./api";
 import Chart from "./Chart";
 import Coins from "./Coins";
 import EmailPanel from "./EmailPanel";
+import PushPanel from "./PushPanel";
 import Health from "./Health";
 import Login from "./Login";
 import { Portfolio, TradeHistory } from "./Portfolio";
@@ -214,6 +215,7 @@ export default function Dashboard() {
         <Portfolio account={state.account} positions={state.positions} assets={state.assets} stats={state.stats} now={state.now} feeRatePct={state.settings.feeRatePct} />
         <div id="history"><TradeHistory trades={state.trades} /></div>
         <EmailPanel email={state.email} notifications={state.notifications} onChanged={load} />
+        <PushPanel />
         <SettingsPanel settings={state.settings} onSaved={load} />
         <Health state={state} />
       </main>

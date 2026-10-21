@@ -3,6 +3,7 @@ import { BybitError, fetchKlines, fetchTickers, sanitizeError, type BybitDeps } 
 import { isUniqueViolation, type Db, type Row } from "./db";
 import { buildTradeEmail, processEmailQueue, queueTradeEmail, type EmailDeps } from "./email";
 import { logger } from "./logger";
+import { pushNewTrades, type PushDeps } from "./webpush";
 import { balanceAfterClose, balanceAfterOpen, computeClose, roundPrice, simulatedQuantity } from "./paper";
 import { ensureSetup } from "./migrations";
 import { pruneRateLimits } from "./ratelimit";
@@ -22,6 +23,7 @@ export interface MonitorDeps {
   now?: () => number;
   bybit?: BybitDeps;
   email?: EmailDeps;
+  push?: PushDeps;
   trigger?: "cron" | "manual";
 }
 
@@ -187,6 +189,14 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
     if (mail.attempted) actions.push(`Email queue: ${mail.accepted} accepted, ${mail.failed} failed/retrying`);
   } catch (e) {
     errors.push(`email queue — ${sanitizeError(e)}`);
+  }
+
+  // 5) Phone notifications (best effort; email remains the reliable channel). Never fails the run.
+  try {
+    const pushed = await pushNewTrades(db, { ...deps.push, now: clock });
+    if (pushed.trades) actions.push(`Push: ${pushed.sent} device notification(s) sent${pushed.failed ? `, ${pushed.failed} failed` : ""}`);
+  } catch (e) {
+    logger.warn("monitor.push_failed", { error: sanitizeError(e) });
   }
 
   await maybePrune(db, nowMs).catch((e) => logger.warn("monitor.prune_failed", { error: sanitizeError(e) }));

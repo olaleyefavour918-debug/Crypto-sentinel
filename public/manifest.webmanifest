@@ -1,0 +1,9 @@
+{
+  "name": "Crypto Sentinel",
+  "short_name": "Sentinel",
+  "description": "Educational paper-trading monitor. Never places real orders.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f1e",
+  "theme_color": "#0a0f1e"
+}
