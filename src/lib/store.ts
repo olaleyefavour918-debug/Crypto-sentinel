@@ -332,7 +332,12 @@ export async function removeAsset(db: import("./db").Db, symbol: string): Promis
     if (exists.rows.length === 0) return "not_found" as const;
     const open = await q.query<Row>("select 1 from paper_positions where symbol = $1 and status = 'open'", [symbol]);
     if (open.rows.length > 0) return "has_open_position" as const;
+    // An open LONG/SHORT analysis would never be resolved once its coin is no longer monitored, so block removal too.
+    const openSignal = await q.query<Row>("select 1 from directional_signals where symbol = $1 and status = 'open'", [symbol]);
+    if (openSignal.rows.length > 0) return "has_open_position" as const;
     await q.query("delete from assets where symbol = $1", [symbol]);
+    // Drop the stale current-direction card for a coin that is no longer watched (signal history is kept).
+    await q.query("delete from direction_state where symbol = $1", [symbol]);
     return "removed" as const;
   });
 }

@@ -34,6 +34,12 @@ describe("monitor health assessment", () => {
     assert.equal(a.state, "slow");
     assert.equal(a.catchesEntries, false);
   });
+  it("active once a fixed scheduler has produced recent runs, even if older runs were hours apart", () => {
+    const a = assessMonitor([0, 5, 10, 15, 20, 25, 240, 480, 720].map((m) => run(m)), NOW, S);
+    assert.equal(a.state, "active");
+    assert.equal(a.cadenceMinutes, 5);
+    assert.equal(a.catchesEntries, true);
+  });
   it("daily-only scheduling is reported as stopped between runs", () => {
     const a = assessMonitor([run(600), run(600 + 1440), run(600 + 2880)], NOW, S);
     assert.equal(a.state, "stopped");

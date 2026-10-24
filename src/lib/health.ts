@@ -37,7 +37,10 @@ export function assessMonitor(runs: JobRunRow[], now: number, settings: Pick<Set
   const last = sorted[0];
   const lastSuccess = sorted.find((r) => r.status === "success" || r.status === "partial") ?? null;
   const gaps: number[] = [];
-  const window = sorted.filter((r) => now - r.startedAt <= 24 * 3600_000).slice(0, 12);
+  // Judge the scheduler by its most recent behaviour: if there are at least 3 runs in the last 30 minutes, use only those
+  // (so a freshly fixed scheduler shows "active" right away instead of waiting for old slow runs to age out).
+  const recent = sorted.filter((r) => now - r.startedAt <= 30 * 60_000).slice(0, 12);
+  const window = recent.length >= 3 ? recent : sorted.filter((r) => now - r.startedAt <= 24 * 3600_000).slice(0, 12);
   for (let i = 0; i + 1 < window.length; i++) gaps.push(window[i].startedAt - window[i + 1].startedAt);
   const cadenceMs = gaps.length >= 2 ? median(gaps) : null;
   const cadenceMinutes = cadenceMs === null ? null : Math.round((cadenceMs / 60_000) * 10) / 10;

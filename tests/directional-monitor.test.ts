@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { analyzeDirection } from "@/lib/directional";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
+import { removeAsset } from "@/lib/store";
 import { H1, H4, floor4h, hourly, toFourHour } from "./helpers/market";
 import { makeHarness, type Harness } from "./helpers/harness";
 
@@ -76,5 +77,16 @@ describe("monitor: BUY/SELL and LONG/SHORT side by side", () => {
     } finally {
       await h.q("alter table direction_state_broken rename to direction_state");
     }
+  });
+  it("a coin with an open LONG/SHORT analysis cannot be removed (it would never resolve); once resolved, removal also clears its stale card", async () => {
+    assert.equal((await h.q("select 1 from directional_signals where symbol = 'ETHUSDT' and status = 'open'")).length, 1);
+    assert.equal(await removeAsset(h.t.db, "ETHUSDT"), "has_open_position");
+    await h.q("update directional_signals set status = 'expired' where symbol = 'ETHUSDT'");
+    await h.q("delete from email_notifications where trade_id in (select id from paper_trades where symbol = 'ETHUSDT')");
+    await h.q("delete from paper_trades where symbol = 'ETHUSDT'");
+    await h.q("delete from paper_positions where symbol = 'ETHUSDT'");
+    assert.equal(await removeAsset(h.t.db, "ETHUSDT"), "removed");
+    assert.equal((await h.q("select 1 from direction_state where symbol = 'ETHUSDT'")).length, 0);
+    assert.equal((await h.q("select 1 from directional_signals where symbol = 'ETHUSDT'")).length, 1, "signal history is kept");
   });
 });
