@@ -102,7 +102,7 @@ The monitor only runs when something calls it.
 |---|---|---|---|
 | **Vercel Hobby cron** (already in `vercel.json`) | **once per day** (and Vercel may fire it anywhere inside that hour) | free | automatic — **too slow on its own** |
 | **External scheduler** e.g. cron-job.org | 1–5 min (check the provider's current free limits) | free | create a job: URL `https://<app>/api/cron/monitor`, method GET, header `Authorization: Bearer <CRON_SECRET>` |
-| **GitHub Actions** (`.github/workflows/monitor.yml`) | ~5 min, best-effort, can be delayed | free | add repo secrets `APP_URL` and `CRON_SECRET` |
+| **GitHub Actions** (`.github/workflows/monitor.yml`) | **Observed in practice: a run only every ~3–6 hours** (GitHub throttles scheduled workflows); NOT suitable for 1h signals | free | add repo secrets `APP_URL` and `CRON_SECRET` |
 | **Vercel Pro cron** | every minute | paid plan | change the schedule in `vercel.json` to `* * * * *` |
 
 Hourly signals only need a check every few minutes; faster calls mainly make stop/target exits react sooner. The dashboard measures the cadence it *actually* sees and turns red if runs stop — it never assumes one-minute monitoring.

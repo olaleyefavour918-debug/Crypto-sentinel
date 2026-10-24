@@ -1,5 +1,6 @@
 # OPTIONAL scheduler fallback for Vercel Hobby (whose own cron can only run once a day).
-# Calls the monitor endpoint every 5 minutes. GitHub's schedule is best-effort: runs can be delayed by several
+# Asks to call the monitor endpoint every 5 minutes, but GitHub throttles scheduled workflows: on this repo runs were observed only every ~3-6 hours.
+# That is far too slow for 1h-candle alerts, so prefer an external scheduler (README -> Scheduling) or Vercel Pro cron. Kept as a backup. GitHub's schedule is best-effort: runs can be delayed by several
 # minutes, and GitHub pauses scheduled workflows on repositories with no activity for 60 days.
 # For 1-minute checks use an external scheduler (README → "Scheduling") or Vercel Pro cron.
 #
