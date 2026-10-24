@@ -52,6 +52,13 @@ export interface Settings {
   atrPeriod: number;
   /** Maximum minutes after a 1h candle closes during which a new simulated entry may be opened. */
   entryWindowMinutes: number;
+  /** LONG/SHORT analysis (separate from BUY/SELL). */
+  directionalEnabled: boolean;
+  directionalEmailEnabled: boolean;
+  /** Assumed slippage per side, in percent, used only for the LONG/SHORT cost estimates. */
+  slippagePct: number;
+  /** Minimum estimated reward/risk (before costs) a LONG/SHORT setup needs; weaker setups stay NEUTRAL. */
+  minRiskReward: number;
 }
 
 export interface TimeframeSnapshot {

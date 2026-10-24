@@ -8,6 +8,8 @@ import { GET as cronGet, POST as cronPost } from "@/app/api/cron/monitor/route";
 import { POST as emailTest } from "@/app/api/email/test/route";
 import { GET as healthGet } from "@/app/api/health/route";
 import { GET as marketGet } from "@/app/api/market/route";
+import { POST as assistantPost } from "@/app/api/assistant/route";
+import { GET as backtestGet } from "@/app/api/backtest/route";
 import { GET as pushKey } from "@/app/api/push/key/route";
 import { DELETE as pushUnsub, POST as pushSub } from "@/app/api/push/subscribe/route";
 import { POST as pushTest } from "@/app/api/push/test/route";
@@ -380,6 +382,38 @@ describe("push notification endpoints", () => {
     const r = await pushTest(request("/api/push/test", { method: "POST", cookie: true, body: {} }));
     assert.equal(r.status, 409);
     assert.match((await body(r)).message, /Enable notifications/);
+  });
+});
+
+describe("assistant and back-test endpoints", () => {
+  it("require a signed-in admin (and same-origin for the assistant)", async () => {
+    assert.equal((await assistantPost(request("/api/assistant", { method: "POST", body: { question: "hi" } }))).status, 401);
+    assert.equal((await assistantPost(request("/api/assistant", { method: "POST", cookie: true, origin: "https://evil.example", body: { question: "hi" } }))).status, 403);
+    assert.equal((await backtestGet(request("/api/backtest?symbol=ETHUSDT"))).status, 401);
+  });
+  it("assistant rejects empty/over-long questions and answers from stored data", async () => {
+    assert.equal((await assistantPost(request("/api/assistant", { method: "POST", cookie: true, body: { question: "" } }))).status, 400);
+    assert.equal((await assistantPost(request("/api/assistant", { method: "POST", cookie: true, body: { question: "x".repeat(301) } }))).status, 400);
+    const r = await assistantPost(request("/api/assistant", { method: "POST", cookie: true, body: { question: "what is the difference between BUY and LONG?" } }));
+    assert.equal(r.status, 200);
+    assert.match((await body(r)).answer, /BUY is not automatically a futures LONG/);
+    const s = await body(await assistantPost(request("/api/assistant", { method: "POST", cookie: true, body: { question: "performance?" } })));
+    assert.equal(s.topic, "performance");
+  });
+  it("back-test validates the symbol, only runs for monitored coins and discloses its limits", async () => {
+    assert.equal((await backtestGet(request("/api/backtest?symbol=bad%20symbol", { cookie: true }))).status, 400);
+    assert.equal((await backtestGet(request("/api/backtest?symbol=ZZZUSDT", { cookie: true }))).status, 404);
+    const r = await backtestGet(request("/api/backtest?symbol=ETHUSDT", { cookie: true }));
+    const b = await body(r);
+    assert.equal(r.status, 200);
+    assert.equal(b.ok, true);
+    assert.ok(Array.isArray(b.result.limitations) && b.result.limitations.length > 3);
+    assert.ok(b.result.stats.caveats.length > 0);
+  });
+  it("state includes the LONG/SHORT summary without secrets", async () => {
+    const st = await body(await stateGet(request("/api/state", { cookie: true })));
+    assert.ok(st.directional && Array.isArray(st.directional.assessments) && st.directional.stats);
+    assert.equal(JSON.stringify(st).includes("privateJwk"), false);
   });
 });
 

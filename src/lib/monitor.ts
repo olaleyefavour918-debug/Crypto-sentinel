@@ -3,7 +3,8 @@ import { BybitError, fetchKlines, fetchTickers, sanitizeError, type BybitDeps } 
 import { isUniqueViolation, type Db, type Row } from "./db";
 import { buildTradeEmail, processEmailQueue, queueTradeEmail, type EmailDeps } from "./email";
 import { logger } from "./logger";
-import { pushNewTrades, type PushDeps } from "./webpush";
+import { pushNewSignals, pushNewTrades, type PushDeps } from "./webpush";
+import { processDirectional } from "./directional-run";
 import { balanceAfterClose, balanceAfterOpen, computeClose, roundPrice, simulatedQuantity } from "./paper";
 import { ensureSetup } from "./migrations";
 import { pruneRateLimits } from "./ratelimit";
@@ -195,6 +196,8 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
   try {
     const pushed = await pushNewTrades(db, { ...deps.push, now: clock });
     if (pushed.trades) actions.push(`Push: ${pushed.sent} device notification(s) sent${pushed.failed ? `, ${pushed.failed} failed` : ""}`);
+    const pushedSignals = await pushNewSignals(db, { ...deps.push, now: clock });
+    if (pushedSignals.signals) actions.push(`Push (LONG/SHORT): ${pushedSignals.sent} device notification(s) sent${pushedSignals.failed ? `, ${pushedSignals.failed} failed` : ""}`);
   } catch (e) {
     logger.warn("monitor.push_failed", { error: sanitizeError(e) });
   }
@@ -319,6 +322,18 @@ async function processAsset(
         actions.push(`${base}: ${outcome}`);
         stateLabel = "POSITION_OPEN";
       }
+    }
+  }
+
+  // ── LONG / SHORT / NEUTRAL analysis: independent of the BUY/SELL logic above and can never break it ──
+  if (klinesOk && h1Closed.length && h4Closed.length) {
+    try {
+      const spot = open && !justClosed ? "a simulated spot position is open (SELL watching)" : justClosed ? "a simulated spot position was just closed (SELL)" : stateLabel === "POSITION_OPEN" ? "a simulated spot position was just opened (BUY)" : evaluation?.status === "SIGNAL" ? "the BUY conditions are met" : "no BUY signal";
+      const dir = await processDirectional(db, { symbol, enabled: asset.enabled, settings, h1Closed, h4Closed, nowMs, spotContext: spot });
+      actions.push(...dir.actions);
+    } catch (e) {
+      logger.warn("monitor.directional_failed", { symbol, error: sanitizeError(e) });
+      actions.push(`${base}: LONG/SHORT analysis could not run this time (BUY/SELL unaffected)`);
     }
   }
 

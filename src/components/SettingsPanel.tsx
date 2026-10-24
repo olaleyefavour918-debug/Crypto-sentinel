@@ -4,7 +4,7 @@ import type { Settings } from "@/lib/types";
 import { api, errorMessage } from "./api";
 import { Btn, Card } from "./ui";
 
-type NumKey = "positionAmountUsdt" | "stopLossPct" | "takeProfitPct" | "feeRatePct" | "entryWindowMinutes" | "emaFast" | "emaSlow" | "rsiPeriod" | "rsiMin" | "rsiMax" | "macdFast" | "macdSlow" | "macdSignal" | "atrPeriod";
+type NumKey = "positionAmountUsdt" | "stopLossPct" | "takeProfitPct" | "feeRatePct" | "entryWindowMinutes" | "emaFast" | "emaSlow" | "rsiPeriod" | "rsiMin" | "rsiMax" | "macdFast" | "macdSlow" | "macdSignal" | "atrPeriod" | "slippagePct" | "minRiskReward";
 
 const GROUPS: Array<{ title: string; hint?: string; fields: Array<{ key: NumKey; label: string; step?: string; unit?: string }> }> = [
   { title: "Paper position & exits", hint: "Illustrative values, not recommendations.", fields: [
@@ -13,6 +13,10 @@ const GROUPS: Array<{ title: string; hint?: string; fields: Array<{ key: NumKey;
     { key: "takeProfitPct", label: "Upside exit", step: "0.1", unit: "%" },
     { key: "feeRatePct", label: "Fee per side", step: "0.01", unit: "%" },
     { key: "entryWindowMinutes", label: "Entry window after candle close", unit: "min" },
+  ] },
+  { title: "LONG / SHORT analysis", hint: "Separate from BUY/SELL. Slippage is an assumption used only for cost estimates.", fields: [
+    { key: "slippagePct", label: "Assumed slippage per side", step: "0.01", unit: "%" },
+    { key: "minRiskReward", label: "Minimum reward/risk", step: "0.1" },
   ] },
   { title: "Indicators", hint: "Changes apply from the next monitor run.", fields: [
     { key: "emaFast", label: "EMA fast" }, { key: "emaSlow", label: "EMA slow" },
@@ -41,7 +45,7 @@ export default function SettingsPanel({ settings, onSaved }: { settings: Setting
   }
 
   const input = "mt-1 w-full rounded-lg border border-line-2 bg-ink px-3 py-2 text-fg outline-none focus:border-accent num";
-  const Toggle = ({ k, label }: { k: "buyEmailEnabled" | "sellEmailEnabled" | "trendExitEnabled"; label: string }) => (
+  const Toggle = ({ k, label }: { k: "buyEmailEnabled" | "sellEmailEnabled" | "trendExitEnabled" | "directionalEnabled" | "directionalEmailEnabled"; label: string }) => (
     <label className="flex cursor-pointer items-center gap-3 text-sm">
       <input type="checkbox" checked={draft[k]} onChange={(e) => setDraft({ ...draft, [k]: e.target.checked })} className="h-4 w-4 accent-[#7aa2ff]" />
       {label}
@@ -73,6 +77,8 @@ export default function SettingsPanel({ settings, onSaved }: { settings: Setting
             </label>
             <Toggle k="buyEmailEnabled" label="Email me when BUY conditions are met" />
             <Toggle k="sellEmailEnabled" label="Email me when SELL conditions are met" />
+            <Toggle k="directionalEnabled" label="Run LONG / SHORT / NEUTRAL analysis" />
+            <Toggle k="directionalEmailEnabled" label="Email me when a LONG or SHORT setup appears" />
             <Toggle k="trendExitEnabled" label="Also exit when the 1h EMA trend turns down (optional)" />
           </div>
         </fieldset>

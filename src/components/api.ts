@@ -2,6 +2,7 @@ import type { MarketView } from "@/lib/marketview";
 import type { ConfigStatus, MonitorAssessment } from "@/lib/health";
 import type { Account, Asset, EvaluationRow, JobRunRow, NotificationRow, Position, TradeEvent, TradeStats } from "@/lib/store";
 import type { Settings } from "@/lib/types";
+import type { DirectionalSummary } from "@/lib/directional-run";
 
 export interface AppState {
   now: number;
@@ -11,6 +12,8 @@ export interface AppState {
   assets: Asset[];
   positions: Position[];
   stats: TradeStats;
+  /** LONG/SHORT/NEUTRAL analysis (optional so older cached responses still render). */
+  directional?: DirectionalSummary;
   trades: TradeEvent[];
   notifications: NotificationRow[];
   evaluations: EvaluationRow[];

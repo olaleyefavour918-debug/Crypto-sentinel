@@ -4,7 +4,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { GET as cronGet } from "@/app/api/cron/monitor/route";
 import { GET as stateGet } from "@/app/api/state/route";
 import type { AppState } from "@/components/api";
+import AssistantPanel from "@/components/AssistantPanel";
 import Coins from "@/components/Coins";
+import DirectionalPanel from "@/components/DirectionalPanel";
+import PerformancePanel from "@/components/PerformancePanel";
 import Dashboard from "@/components/Dashboard";
 import EmailPanel from "@/components/EmailPanel";
 import Health from "@/components/Health";
@@ -180,5 +183,58 @@ describe("dashboard components render the real API state", () => {
     const shell = renderToStaticMarkup(<Dashboard />);
     assert.match(shell, /animate-pulse/);
     assert.ok(!/BTC|\d{2},\d{3}/.test(text(shell)), "no prices before real data has loaded");
+  });
+
+  it("LONG/SHORT panel: explains the signal types, shows every coin, honest neutral reasons, costs and limitations", () => {
+    const d = state.directional!;
+    assert.ok(d, "the real /api/state payload carries the LONG/SHORT summary");
+    const t = text(renderToStaticMarkup(<DirectionalPanel assessments={d.assessments} signals={d.signals} assets={state.assets} now={state.now} enabled />));
+    assert.match(t, /LONG \/ SHORT analysis/);
+    assert.match(t, /What do BUY \/ SELL and LONG \/ SHORT \/ NEUTRAL mean\? \(they are different systems\)/);
+    assert.match(t, /A SELL means “exit what I hold”, it is not a short/);
+    assert.match(t, /A BUY is not automatically a futures LONG, and a SELL is not automatically a SHORT/);
+    assert.match(t, /Analysis, not advice/);
+    for (const c of ["BTC", "ETH", "SOL", "XRP", "BNB"]) assert.match(t, new RegExp(`${c}\\s*/USDT`));
+    assert.match(t, /Costs & limitations/);
+    assert.match(t, /Based on Bybit SPOT candles/);
+    assert.match(t, /NEUTRAL|LONG|SHORT/);
+  });
+
+  it("LONG/SHORT panel: no assessment yet, switched-off and data-problem states are explicit, never invented", () => {
+    const empty = text(renderToStaticMarkup(<DirectionalPanel assessments={[]} signals={[]} assets={state.assets} now={state.now} enabled={false} />));
+    assert.match(empty, /Not evaluated yet/);
+    assert.match(empty, /No assessment stored yet/);
+    assert.match(empty, /switched off in Settings/);
+    assert.match(empty, /No LONG or SHORT signal has been raised yet/);
+    const bad = state.directional!.assessments.map((r) => ({ ...r, assessment: { ...r.assessment, dataOk: false, dataIssue: "1h data is stale" } }));
+    assert.match(text(renderToStaticMarkup(<DirectionalPanel assessments={bad} signals={[]} assets={state.assets} now={state.now} enabled />)), /Not assessed: 1h data is stale/);
+  });
+
+  it("performance panel: no resolved signals → no invented numbers, with caveats and back-test disclosure", () => {
+    const d = state.directional!;
+    const t = text(renderToStaticMarkup(<PerformancePanel stats={d.stats} counts={d.counts} assets={state.assets} />));
+    assert.match(t, /LONG \/ SHORT performance & risk/);
+    assert.match(t, /Resolved signals 0/);
+    assert.match(t, /the simulated fill is the next candle’s open/);
+    assert.match(t, /Only 0 resolved signal\(s\): too few/);
+    assert.match(t, /Historical back-test \(walk-forward\)/);
+    assert.match(t, /no look-ahead/);
+    assert.match(t, /Run back-test/);
+  });
+
+  it("assistant panel: states it is rule-based, offers suggestions and labels its input", () => {
+    const t = text(renderToStaticMarkup(<AssistantPanel selected="ETHUSDT" />));
+    assert.match(t, /Assistant \(built-in, rule-based\)/);
+    assert.match(t, /no AI service, no guessing/);
+    assert.match(t, /What is the difference between BUY and LONG\?/);
+    assert.match(renderToStaticMarkup(<AssistantPanel selected={null} />), /aria-label="Ask the assistant"/);
+  });
+
+  it("settings: the new LONG/SHORT controls are present and labelled", () => {
+    const t = renderToStaticMarkup(<SettingsPanel settings={state.settings} onSaved={() => undefined} />);
+    assert.match(text(t), /Run LONG \/ SHORT \/ NEUTRAL analysis/);
+    assert.match(text(t), /Email me when a LONG or SHORT setup appears/);
+    assert.match(text(t), /Assumed slippage per side/);
+    assert.match(text(t), /Minimum reward\/risk/);
   });
 });

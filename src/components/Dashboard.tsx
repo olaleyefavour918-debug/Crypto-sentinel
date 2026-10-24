@@ -8,6 +8,9 @@ import Chart from "./Chart";
 import Coins from "./Coins";
 import EmailPanel from "./EmailPanel";
 import PushPanel from "./PushPanel";
+import AssistantPanel from "./AssistantPanel";
+import DirectionalPanel from "./DirectionalPanel";
+import PerformancePanel from "./PerformancePanel";
 import Health from "./Health";
 import Login from "./Login";
 import { Portfolio, TradeHistory } from "./Portfolio";
@@ -212,8 +215,12 @@ export default function Dashboard() {
 
         {sel && <Signal symbol={sel.symbol} evaluation={ev} lastSignal={last} settings={state.settings} />}
 
+        <DirectionalPanel assessments={state.directional?.assessments ?? []} signals={state.directional?.signals ?? []} assets={state.assets} now={state.now} enabled={state.settings.directionalEnabled !== false} />
+        <AssistantPanel selected={selected} />
+
         <Portfolio account={state.account} positions={state.positions} assets={state.assets} stats={state.stats} now={state.now} feeRatePct={state.settings.feeRatePct} />
         <div id="history"><TradeHistory trades={state.trades} /></div>
+        {state.directional && <PerformancePanel stats={state.directional.stats} counts={state.directional.counts} assets={state.assets} />}
         <EmailPanel email={state.email} notifications={state.notifications} onChanged={load} />
         <PushPanel />
         <SettingsPanel settings={state.settings} onSaved={load} />

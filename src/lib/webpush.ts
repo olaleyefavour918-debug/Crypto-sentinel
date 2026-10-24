@@ -181,3 +181,32 @@ export async function pushNewTrades(db: Db, deps: PushDeps = {}): Promise<{ trad
   return { trades: claimed.rows.length, sent, failed };
 }
 
+
+/** Same idea as pushNewTrades, for LONG/SHORT analysis signals (claimed atomically, never older than an hour). */
+export async function pushNewSignals(db: Db, deps: PushDeps = {}): Promise<{ signals: number; sent: number; failed: number }> {
+  const now = (deps.now ?? Date.now)();
+  const cutoff = new Date(now - PUSH_MAX_AGE_MS).toISOString();
+  const claimed = await db.query<Row>(
+    `update directional_signals set push_sent_at = now()
+       where id in (select id from directional_signals where push_sent_at is null and created_at >= $1::timestamptz order by id limit 20)
+         and push_sent_at is null
+       returning symbol, direction, price_ref, stop, take_profit, risk_reward`,
+    [cutoff],
+  );
+  await db.query("update directional_signals set push_sent_at = now() where push_sent_at is null and created_at < $1::timestamptz", [cutoff]);
+  let sent = 0, failed = 0;
+  for (const r of claimed.rows) {
+    const pair = pairLabel(String(r.symbol));
+    const payload: PushPayload = {
+      title: `${r.direction} analysis · ${pair}`,
+      body: `Reference ${fmtPrice(Number(r.price_ref))}, stop ${fmtPrice(Number(r.stop))}, target ${fmtPrice(Number(r.take_profit))}, reward/risk ${Number(r.risk_reward).toFixed(1)}. Analysis only, no order placed.`,
+      tag: `signal-${r.symbol}-${r.direction}`,
+      url: "/",
+    };
+    const out = await pushToAll(db, payload, deps);
+    sent += out.sent;
+    failed += out.failed;
+  }
+  return { signals: claimed.rows.length, sent, failed };
+}
+

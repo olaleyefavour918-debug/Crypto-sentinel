@@ -55,7 +55,7 @@ export interface Position {
   netPnl: number | null;
 }
 
-const json = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v);
+export const json = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v);
 
 export function mapPosition(r: Row): Position {
   return {

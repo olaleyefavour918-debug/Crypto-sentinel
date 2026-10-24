@@ -219,6 +219,56 @@ alter table paper_trades add column if not exists push_sent_at timestamptz;
 update paper_trades set push_sent_at = now() where push_sent_at is null;
 `,
   },
+  {
+    id: "004_directional",
+    sql: `
+-- LONG / SHORT / NEUTRAL analysis. Entirely separate from the BUY/SELL spot paper-trading tables.
+-- Latest assessment per coin (also remembers the previous direction so a signal fires only on a TRANSITION).
+create table if not exists direction_state (
+  symbol text primary key,
+  direction text not null check (direction in ('LONG','SHORT','NEUTRAL')),
+  candle_start timestamptz not null,
+  evaluated_at timestamptz not null,
+  price numeric(24,10),
+  payload jsonb not null
+);
+
+-- Signals that were actually raised (LONG/SHORT only) and how they turned out (forward-tracked, no look-ahead).
+create table if not exists directional_signals (
+  id bigserial primary key,
+  symbol text not null,
+  direction text not null check (direction in ('LONG','SHORT')),
+  candle_start timestamptz not null,
+  created_at timestamptz not null default now(),
+  price_ref numeric(24,10) not null,
+  stop numeric(24,10) not null,
+  take_profit numeric(24,10) not null,
+  risk_reward numeric(10,4) not null,
+  score numeric(6,2) not null,
+  payload jsonb not null,
+  status text not null default 'open' check (status in ('open','tp','sl','expired','reversed','missed')),
+  fill_price numeric(24,10),
+  exit_price numeric(24,10),
+  exit_at timestamptz,
+  bars int,
+  gross_pct numeric(12,6),
+  net_pct numeric(12,6),
+  r_multiple numeric(12,6),
+  mfe_pct numeric(12,6),
+  mae_pct numeric(12,6),
+  ambiguous boolean not null default false,
+  resolved_at timestamptz,
+  push_sent_at timestamptz
+);
+create unique index if not exists directional_one_per_candle on directional_signals (symbol, candle_start);
+create unique index if not exists directional_one_open_per_symbol on directional_signals (symbol) where status = 'open';
+create index if not exists directional_created_idx on directional_signals (created_at desc);
+
+alter table email_notifications add column if not exists signal_id bigint references directional_signals(id);
+alter table email_notifications drop constraint if exists email_notifications_kind_check;
+alter table email_notifications add constraint email_notifications_kind_check check (kind in ('BUY','SELL','TEST','LONG','SHORT'));
+`,
+  },
 ];
 
 const setupMemo = new WeakMap<object, Promise<void>>();

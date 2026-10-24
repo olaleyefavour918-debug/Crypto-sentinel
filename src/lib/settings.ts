@@ -22,6 +22,10 @@ export const DEFAULT_SETTINGS: Settings = {
   macdSignal: 9,
   atrPeriod: 14,
   entryWindowMinutes: 30,
+  directionalEnabled: true,
+  directionalEmailEnabled: true,
+  slippagePct: 0.05,
+  minRiskReward: 1.5,
 };
 
 type NumRule = { min: number; max: number; int?: boolean };
@@ -41,9 +45,11 @@ const NUMBER_RULES: Record<string, NumRule> = {
   macdSignal: { min: 2, max: 60, int: true },
   atrPeriod: { min: 2, max: 50, int: true },
   entryWindowMinutes: { min: 1, max: 55, int: true },
+  slippagePct: { min: 0, max: 2 },
+  minRiskReward: { min: 1, max: 5 },
 };
 
-const BOOLEAN_KEYS = ["buyEmailEnabled", "sellEmailEnabled", "trendExitEnabled"] as const;
+const BOOLEAN_KEYS = ["buyEmailEnabled", "sellEmailEnabled", "trendExitEnabled", "directionalEnabled", "directionalEmailEnabled"] as const;
 
 const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
 

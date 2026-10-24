@@ -25,6 +25,28 @@ All thresholds, the position size, fee assumption, indicator periods and the rec
 
 ---
 
+## Two separate signal systems: BUY/SELL and LONG/SHORT
+
+| | BUY / SELL (original) | LONG / SHORT / NEUTRAL (added) |
+|---|---|---|
+| What it is | Long-only **spot paper-trading** rules | A separate **directional analysis** (could apply to either side, e.g. derivatives) |
+| BUY / LONG | BUY opens a simulated spot position | LONG = conditions favour a rise; it opens **no** paper position |
+| SELL / SHORT | SELL **closes** that position (stop, target, trend exit). It is never a short | SHORT = conditions favour a fall (not possible on plain spot) |
+| NEUTRAL | n/a | Conditions unclear, contradictory or too weak. This is the normal, most common result |
+| Alerts | Email + phone notification | Email + phone notification, clearly labelled "not a BUY/SELL signal" |
+
+A BUY is not automatically a LONG and a SELL is not automatically a SHORT; both can fire for the same coin at the same or different times. Neither system ever places an order.
+
+**LONG/SHORT rules** (1h finds the setup, 4h must confirm; closed candles only). A direction is reported only when **every** condition agrees, otherwise NEUTRAL with the reasons: 4h trend confirms (EMA fast/slow + close) · 1h EMA alignment · 1h MACD momentum (histogram sign and not fading, MACD vs signal) · RSI in 50–70 (LONG) or 30–50 (SHORT) · volume at least 0.8× the previous 20-candle average · volatility not extreme (ATR vs its 100-candle median) · estimated reward/risk at least the minimum (default 1.5; stop = 1.5×ATR, target = 2× the risk but capped by the nearest swing support/resistance) · still worthwhile (reward/risk ≥ 1) after estimated fees and slippage.
+
+**Alerts and duplicates:** a signal fires only when the assessment *changes into* LONG or SHORT, once per 1h candle and only within the entry window after the candle closes. An opposite assessment closes the open one as "reversed" and raises the new one. Staying LONG, or re-running the same candle, never alerts again.
+
+**Performance tracking:** each raised signal is followed forward with later candles only (no look-ahead): fill = next candle's open, stop and target checked on highs/lows (if both fall inside one candle the stop counts first), expiry after 48 hours, fees + assumed slippage on both sides. The dashboard shows win rate, net %, profit factor, average R and maximum drawdown, with a clear warning while the sample is small. A walk-forward back-test (≈ 40 days of 1h candles per request) can be run per coin from the dashboard. Treat small samples as noise.
+
+**Assistant:** the dashboard has a built-in, rule-based assistant. It reads your actual stored data (assessments, conditions, positions, performance, settings) and says so when information is missing. It has no AI model, no paid API and no external calls.
+
+No new environment variables are needed. The new database tables are created automatically on the first run after deploying.
+
 ## Deploying on Vercel (step by step)
 
 You need: a GitHub account, a Vercel account (free Hobby is fine), a Resend account (free).
