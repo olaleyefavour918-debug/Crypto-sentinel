@@ -3,7 +3,8 @@ import { BybitError, fetchKlines, fetchTickers, sanitizeError, type BybitDeps } 
 import { isUniqueViolation, type Db, type Row } from "./db";
 import { buildTradeEmail, processEmailQueue, queueTradeEmail, type EmailDeps } from "./email";
 import { logger } from "./logger";
-import { pushNewSignals, pushNewTrades, type PushDeps } from "./webpush";
+import { pushNewEarly, pushNewSignals, pushNewTrades, type PushDeps } from "./webpush";
+import { processEarly } from "./early";
 import { processDirectional } from "./directional-run";
 import { balanceAfterClose, balanceAfterOpen, computeClose, roundPrice, simulatedQuantity } from "./paper";
 import { ensureSetup } from "./migrations";
@@ -198,6 +199,8 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
     if (pushed.trades) actions.push(`Push: ${pushed.sent} device notification(s) sent${pushed.failed ? `, ${pushed.failed} failed` : ""}`);
     const pushedSignals = await pushNewSignals(db, { ...deps.push, now: clock });
     if (pushedSignals.signals) actions.push(`Push (LONG/SHORT): ${pushedSignals.sent} device notification(s) sent${pushedSignals.failed ? `, ${pushedSignals.failed} failed` : ""}`);
+    const pushedEarly = await pushNewEarly(db, { ...deps.push, now: clock });
+    if (pushedEarly.alerts) actions.push(`Push (early heads-up): ${pushedEarly.sent} device notification(s) sent${pushedEarly.failed ? `, ${pushedEarly.failed} failed` : ""}`);
   } catch (e) {
     logger.warn("monitor.push_failed", { error: sanitizeError(e) });
   }
@@ -334,6 +337,16 @@ async function processAsset(
     } catch (e) {
       logger.warn("monitor.directional_failed", { symbol, error: sanitizeError(e) });
       actions.push(`${base}: LONG/SHORT analysis could not run this time (BUY/SELL unaffected)`);
+    }
+  }
+
+  // ── Early, unconfirmed heads-up: separate, opens no position, and can never break anything above ──
+  if (klinesOk && h1Closed.length && h4Closed.length) {
+    try {
+      const buyHandled = Boolean(open) || justClosed || evaluation?.status === "SIGNAL";
+      actions.push(...(await processEarly(db, { symbol, enabled: asset.enabled, settings, h1Closed, h4Closed, nowMs, buyHandled })));
+    } catch (e) {
+      logger.warn("monitor.early_failed", { symbol, error: sanitizeError(e) });
     }
   }
 

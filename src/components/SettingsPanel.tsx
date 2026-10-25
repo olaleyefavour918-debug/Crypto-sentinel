@@ -45,7 +45,7 @@ export default function SettingsPanel({ settings, onSaved }: { settings: Setting
   }
 
   const input = "mt-1 w-full rounded-lg border border-line-2 bg-ink px-3 py-2 text-fg outline-none focus:border-accent num";
-  const Toggle = ({ k, label }: { k: "buyEmailEnabled" | "sellEmailEnabled" | "trendExitEnabled" | "directionalEnabled" | "directionalEmailEnabled"; label: string }) => (
+  const Toggle = ({ k, label }: { k: "buyEmailEnabled" | "sellEmailEnabled" | "trendExitEnabled" | "directionalEnabled" | "directionalEmailEnabled" | "earlyAlertsEnabled"; label: string }) => (
     <label className="flex cursor-pointer items-center gap-3 text-sm">
       <input type="checkbox" checked={draft[k]} onChange={(e) => setDraft({ ...draft, [k]: e.target.checked })} className="h-4 w-4 accent-[#7aa2ff]" />
       {label}
@@ -79,6 +79,7 @@ export default function SettingsPanel({ settings, onSaved }: { settings: Setting
             <Toggle k="sellEmailEnabled" label="Email me when SELL conditions are met" />
             <Toggle k="directionalEnabled" label="Run LONG / SHORT / NEUTRAL analysis" />
             <Toggle k="directionalEmailEnabled" label="Email me when a LONG or SHORT setup appears" />
+            <Toggle k="earlyAlertsEnabled" label="Early heads-up (email + phone) when a coin may be turning up — unconfirmed, no paper trade" />
             <Toggle k="trendExitEnabled" label="Also exit when the 1h EMA trend turns down (optional)" />
           </div>
         </fieldset>

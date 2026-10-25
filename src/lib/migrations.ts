@@ -274,6 +274,25 @@ alter table email_notifications add constraint email_notifications_kind_check ch
     // A SELL should also fire when the trend breaks, not only at the fixed stop/target. Turned on once; it can be switched off in Settings.
     sql: `update app_settings set settings = jsonb_set(settings, '{trendExitEnabled}', 'true'::jsonb) where id = 1;`,
   },
+  {
+    id: "006_early_alerts",
+    sql: `
+-- Early, unconfirmed "may be turning up" heads-ups. Never linked to a paper trade or position.
+create table if not exists early_alerts (
+  id bigserial primary key,
+  symbol text not null,
+  candle_start timestamptz not null,
+  price numeric(20,8) not null,
+  payload jsonb not null,
+  created_at timestamptz not null default now(),
+  push_sent_at timestamptz
+);
+create unique index if not exists early_one_per_candle on early_alerts (symbol, candle_start);
+create index if not exists early_symbol_created_idx on early_alerts (symbol, created_at desc);
+alter table email_notifications drop constraint if exists email_notifications_kind_check;
+alter table email_notifications add constraint email_notifications_kind_check check (kind in ('BUY','SELL','TEST','LONG','SHORT','EARLY'));
+`,
+  },
 ];
 
 const setupMemo = new WeakMap<object, Promise<void>>();

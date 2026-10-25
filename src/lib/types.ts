@@ -55,6 +55,8 @@ export interface Settings {
   /** LONG/SHORT analysis (separate from BUY/SELL). */
   directionalEnabled: boolean;
   directionalEmailEnabled: boolean;
+  /** Early, unconfirmed "coin may be turning up" heads-up (email + push). Never opens a paper trade. */
+  earlyAlertsEnabled: boolean;
   /** Assumed slippage per side, in percent, used only for the LONG/SHORT cost estimates. */
   slippagePct: number;
   /** Minimum estimated reward/risk (before costs) a LONG/SHORT setup needs; weaker setups stay NEUTRAL. */

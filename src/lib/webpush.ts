@@ -210,3 +210,30 @@ export async function pushNewSignals(db: Db, deps: PushDeps = {}): Promise<{ sig
   return { signals: claimed.rows.length, sent, failed };
 }
 
+/** Early, unconfirmed heads-ups (claimed atomically, never older than an hour). */
+export async function pushNewEarly(db: Db, deps: PushDeps = {}): Promise<{ alerts: number; sent: number; failed: number }> {
+  const now = (deps.now ?? Date.now)();
+  const cutoff = new Date(now - PUSH_MAX_AGE_MS).toISOString();
+  const claimed = await db.query<Row>(
+    `update early_alerts set push_sent_at = now()
+       where id in (select id from early_alerts where push_sent_at is null and created_at >= $1::timestamptz order by id limit 20)
+         and push_sent_at is null
+       returning symbol, price`,
+    [cutoff],
+  );
+  await db.query("update early_alerts set push_sent_at = now() where push_sent_at is null and created_at < $1::timestamptz", [cutoff]);
+  let sent = 0, failed = 0;
+  for (const r of claimed.rows) {
+    const pair = pairLabel(String(r.symbol));
+    const payload: PushPayload = {
+      title: `Early heads-up (unconfirmed) · ${pair}`,
+      body: `${pair} may be turning up near ${fmtPrice(Number(r.price))}. Not a BUY signal and no paper trade was opened. Check the chart yourself.`,
+      tag: `early-${r.symbol}`,
+      url: "/",
+    };
+    const out = await pushToAll(db, payload, deps);
+    sent += out.sent;
+    failed += out.failed;
+  }
+  return { alerts: claimed.rows.length, sent, failed };
+}
