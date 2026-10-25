@@ -23,7 +23,8 @@ describe("BUY → SELL → next BUY → SELL cycle across BTC, ETH, SOL, XRP, BN
     assert.ok(Math.abs((await balance()) - (65.5 + Number(r.net) - Number(r.reserved))) < 1e-6, "balance invariant violated");
   };
 
-  before(async () => { h = await makeHarness(); });
+  // This cycle test is about stop-loss / take-profit and re-arming, so the optional trend-break exit is switched off here (it has its own tests).
+  before(async () => { h = await makeHarness(); await h.setSettings({ trendExitEnabled: false }); });
   after(async () => { await h.cleanup(); });
 
   it("starts with the five default coins and a 65.50 USDT simulated balance", async () => {

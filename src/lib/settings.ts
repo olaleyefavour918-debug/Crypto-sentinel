@@ -10,7 +10,7 @@ export const DEFAULT_SETTINGS: Settings = {
   emailRecipient: DEFAULT_RECIPIENT,
   stopLossPct: 2,
   takeProfitPct: 4,
-  trendExitEnabled: false,
+  trendExitEnabled: true,
   feeRatePct: 0.1,
   emaFast: 20,
   emaSlow: 50,

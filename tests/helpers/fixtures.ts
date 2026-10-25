@@ -21,7 +21,7 @@ const floorTo = (t: number, i: number) => Math.floor(t / i) * i;
 /** Uptrend + oscillation that ends in a state satisfying every BUY condition (RSI ≈ 55, MACD hist > 0, EMA20 > EMA50). */
 export function signalMarket(now = NOW) {
   const h1 = makeCandles(220, floorTo(now, H1), H1, (i) => 60000 + 8 * i + 200 * Math.sin((i + 9) / 2.2));
-  const h4 = makeCandles(220, floorTo(now, H4), H4, (i) => 55000 + 32 * i);
+  const h4 = makeCandles(220, floorTo(now, H4), H4, (i) => 55000 + 32 * i + 500 * Math.sin((i + 9) / 2.5));
   return { h1, h4 };
 }
 

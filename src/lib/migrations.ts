@@ -269,6 +269,11 @@ alter table email_notifications drop constraint if exists email_notifications_ki
 alter table email_notifications add constraint email_notifications_kind_check check (kind in ('BUY','SELL','TEST','LONG','SHORT'));
 `,
   },
+  {
+    id: "005_trend_exit_on",
+    // A SELL should also fire when the trend breaks, not only at the fixed stop/target. Turned on once; it can be switched off in Settings.
+    sql: `update app_settings set settings = jsonb_set(settings, '{trendExitEnabled}', 'true'::jsonb) where id = 1;`,
+  },
 ];
 
 const setupMemo = new WeakMap<object, Promise<void>>();

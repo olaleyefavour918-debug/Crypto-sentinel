@@ -25,7 +25,7 @@ describe("BUY rule (1h signal + 4h confirmation)", () => {
     const { h1, h4 } = signalMarket();
     const ev = evaluateBuy({ h1, h4, now: NOW, settings: S });
     assert.equal(ev.status, "SIGNAL");
-    assert.equal(ev.conditions.length, 7);
+    assert.equal(ev.conditions.length, 12);
     assert.ok(ev.conditions.every((c) => c.passed && c.evaluated));
     assert.ok(ev.indicators.h1.rsi! >= 50 && ev.indicators.h1.rsi! <= 65);
     assert.ok(ev.indicators.h1.macdHist! > 0);
@@ -37,7 +37,26 @@ describe("BUY rule (1h signal + 4h confirmation)", () => {
     const { h4 } = downMarket();
     const ev = evaluateBuy({ h1, h4, now: NOW, settings: S });
     assert.equal(ev.status, "NO_SIGNAL");
-    assert.deepEqual(failed(ev), ["h4_ema_trend"]);
+    assert.deepEqual(failed(ev), ["h4_ema_trend", "h4_momentum"]);
+  });
+  it("quality gate: a hollow, low-volume candle is not a BUY", () => {
+    const { h1, h4 } = signalMarket();
+    const thin = h1.map((c, i) => (i === h1.length - 1 ? { ...c, volume: 2 } : c));
+    assert.deepEqual(failed(evaluateBuy({ h1: thin, h4, now: NOW, settings: S })), ["h1_volume"]);
+  });
+  it("quality gate: price stretched far above its average (chasing a spike) is not a BUY", () => {
+    const { h1, h4 } = signalMarket();
+    const last = h1[h1.length - 1];
+    const spiked = [...h1.slice(0, -1), { ...last, close: last.close + 600, high: last.close + 620 }];
+    const ev = evaluateBuy({ h1: spiked, h4, now: NOW, settings: S });
+    assert.equal(ev.status, "NO_SIGNAL");
+    assert.ok(failed(ev).includes("h1_not_extended"));
+  });
+  it("quality gate: a 4h chart that is already exhausted (RSI very high) is not a BUY", () => {
+    const { h1 } = signalMarket();
+    const run = makeCandles(220, Math.floor(NOW / H4) * H4, H4, (i) => 55000 + 120 * i);
+    const ev = evaluateBuy({ h1, h4: run, now: NOW, settings: S });
+    assert.ok(failed(ev).includes("h4_not_exhausted"));
   });
   it("fails when the 1h EMA trend is down", () => {
     const { h4 } = signalMarket();
@@ -127,6 +146,15 @@ describe("SELL / exit rules", () => {
     const on = { ...pos, trendExitEnabled: true };
     assert.equal(evaluateExit({ position: on, currentPrice: 100.5, h1: { ...bearish, candleStart: NOW } }).reason, "TREND_CHANGE");
     assert.equal(evaluateExit({ position: { ...on, openedAt: NOW + 2 * H1 }, currentPrice: 100.5, h1: bearish }).exit, false); // candle closed before entry
+  });
+  it("early trend-break exit: a 1h close below the slow EMA with negative momentum sells before the EMAs cross", () => {
+    const on = { ...pos, trendExitEnabled: true };
+    const broken = { candleStart: NOW, close: 99, emaFast: 100.5, emaSlow: 100, rsi: 42, macd: -1, macdSignal: 0, macdHist: -1, atr: 1 };
+    const d = evaluateExit({ position: on, currentPrice: 99.5, h1: broken });
+    assert.equal(d.reason, "TREND_CHANGE");
+    assert.match(d.detail, /uptrend has broken/);
+    assert.equal(evaluateExit({ position: on, currentPrice: 99.5, h1: { ...broken, macdHist: 0.5 } }).exit, false, "momentum still positive: hold");
+    assert.equal(evaluateExit({ position: on, currentPrice: 100.5, h1: { ...broken, close: 100.5 } }).exit, false, "close above slow EMA: hold");
   });
   it("never exits on an invalid price", () => {
     for (const p of [0, -1, NaN, Infinity]) assert.equal(evaluateExit({ position: pos, currentPrice: p, h1: null }).exit, false);

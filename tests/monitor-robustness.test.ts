@@ -33,7 +33,8 @@ describe("persistence & restarts", () => {
     assert.deepEqual(await runMigrations(x.t.db), []);
     assert.equal((await x.q("select 1 from app_settings")).length, 1);
     assert.deepEqual((await x.q<{ starting_balance: string }>("select starting_balance from paper_account")).map((r) => Number(r.starting_balance)), [65.5]);
-    assert.equal((await x.q("select id from schema_migrations order by id")).length, 4);
+    assert.equal((await x.q("select id from schema_migrations order by id")).length, 5);
+    assert.equal((await x.q<{ v: string }>("select settings->>'trendExitEnabled' as v from app_settings"))[0].v, "true", "SELL on a broken trend is on by default");
   });
 });
 
@@ -152,7 +153,7 @@ describe("failure isolation & outages (never invent data or trades)", () => {
     await x.run();
     const [ev] = await x.q<{ conditions: Array<{ id: string; passed: boolean }>; status: string }>("select conditions, status from signal_evaluations where symbol = 'BTCUSDT'");
     assert.equal(ev.status, "SIGNAL");
-    assert.equal(ev.conditions.length, 7);
+    assert.equal(ev.conditions.length, 12);
     assert.ok(ev.conditions.every((c) => c.passed));
   });
 });

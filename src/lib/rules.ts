@@ -109,6 +109,40 @@ const f2 = (n: number | null) => (n === null ? "n/a" : fmtPrice(n));
 const f4 = (n: number | null) => (n === null ? "n/a" : String(Number(n.toPrecision(4))));
 
 /**
+ * Extra "is this a good-quality setup?" checks that sit on top of the four basic BUY conditions. They only ever make
+ * a BUY rarer (never create one): real buying volume, a trend that is actually rising (not a flat range), price not
+ * stretched far above its average (chasing a spike), and the 4h chart agreeing in momentum without being exhausted.
+ */
+export const QUALITY = { minVolumeRatio: 0.8, maxStretchAtr: 2.5, slopeBars: 5, h4RsiCeiling: 72 } as const;
+
+export function qualityGates(h1: Candle[], h4: Candle[], s: Settings, snap1: TimeframeSnapshot): Array<[string, string, boolean, string]> {
+  const out: Array<[string, string, boolean, string]> = [];
+  const last = h1[h1.length - 1];
+  const prev = h1.slice(-21, -1);
+  const avgVol = prev.length ? prev.reduce((a, c) => a + c.volume, 0) / prev.length : 0;
+  const ratio = avgVol > 0 ? last.volume / avgVol : 0;
+  out.push(["h1_volume", `1h volume at least ${QUALITY.minVolumeRatio}× its 20-candle average (real participation)`, avgVol > 0 && ratio >= QUALITY.minVolumeRatio, `Volume ${ratio.toFixed(2)}× average`]);
+
+  const ser1 = computeSeries(h1, s);
+  const slowNow = ser1.emaSlow[h1.length - 1];
+  const slowThen = ser1.emaSlow[h1.length - 1 - QUALITY.slopeBars];
+  const rising = slowNow !== null && slowThen !== null && slowNow > slowThen;
+  out.push(["h1_trend_rising", `1h EMA${s.emaSlow} is rising (not a flat, choppy range)`, rising, slowNow !== null && slowThen !== null ? `EMA${s.emaSlow} ${f2(slowThen)} → ${f2(slowNow)} over ${QUALITY.slopeBars} candles` : "Not enough data"]);
+
+  const atr1 = snap1.atr;
+  const fast = snap1.emaFast;
+  const stretch = atr1 && atr1 > 0 && fast !== null ? (last.close - fast) / atr1 : null;
+  out.push(["h1_not_extended", `Price is not stretched more than ${QUALITY.maxStretchAtr}× ATR above EMA${s.emaFast} (not chasing a spike)`, stretch !== null && stretch <= QUALITY.maxStretchAtr, stretch === null ? "ATR unavailable" : `${stretch.toFixed(2)}× ATR above EMA${s.emaFast}`]);
+
+  const ser4 = computeSeries(h4, s);
+  const hist4 = ser4.macdHist[h4.length - 1];
+  const rsi4 = ser4.rsi[h4.length - 1];
+  out.push(["h4_momentum", "4h MACD histogram is positive (higher timeframe agrees)", hist4 !== null && hist4 > 0, hist4 === null ? "Unavailable" : `4h histogram ${f4(hist4)}`]);
+  out.push(["h4_not_exhausted", `4h RSI below ${QUALITY.h4RsiCeiling} (room left to rise)`, rsi4 !== null && rsi4 < QUALITY.h4RsiCeiling, rsi4 === null ? "Unavailable" : `4h RSI ${rsi4.toFixed(1)}`]);
+  return out;
+}
+
+/**
  * Evaluates the educational BUY rule on CLOSED candles only:
  *   1h EMA fast > EMA slow, 4h EMA fast > EMA slow, 1h RSI within [rsiMin, rsiMax], 1h MACD histogram > 0,
  *   plus data-quality gates (enough candles, no gaps, not stale). If any data gate fails, the status is
@@ -208,6 +242,7 @@ export function evaluateBuy(input: { h1: Candle[]; h4: Candle[]; now: number; se
     ["h4_ema_trend", indLabels[1][1], e4 > e4s, `EMA${s.emaFast} ${f2(e4)} vs EMA${s.emaSlow} ${f2(e4s)}`],
     ["h1_rsi_range", indLabels[2][1], r >= s.rsiMin && r <= s.rsiMax, `RSI ${r.toFixed(1)}`],
     ["h1_macd_hist", indLabels[3][1], h > 0, `Histogram ${f4(h)}`],
+    ...qualityGates(h1, h4, s, snap1),
   ];
   for (const [id, label, passed, detail] of results) conditions.push({ id, label, passed, evaluated: true, detail });
 
@@ -262,14 +297,23 @@ export function evaluateExit(input: {
     h1.candleStart !== null &&
     h1.emaFast !== null &&
     h1.emaSlow !== null &&
-    h1.candleStart + INTERVAL_MS["60"] > p.openedAt && // the closed candle must have closed after entry
-    h1.emaFast < h1.emaSlow
+    h1.candleStart + INTERVAL_MS["60"] > p.openedAt // the closed candle must have closed after entry
   ) {
-    return {
-      exit: true,
-      reason: "TREND_CHANGE",
-      detail: `1h EMA fast ${f2(h1.emaFast)} crossed below EMA slow ${f2(h1.emaSlow)} on a candle closed after entry.`,
-    };
+    if (h1.emaFast < h1.emaSlow) {
+      return {
+        exit: true,
+        reason: "TREND_CHANGE",
+        detail: `1h EMA fast ${f2(h1.emaFast)} crossed below EMA slow ${f2(h1.emaSlow)} on a candle closed after entry.`,
+      };
+    }
+    // Earlier warning than the EMA cross (which lags): a 1h close below the slow EMA with MACD momentum negative.
+    if (h1.close !== null && h1.macdHist !== null && h1.close < h1.emaSlow && h1.macdHist < 0) {
+      return {
+        exit: true,
+        reason: "TREND_CHANGE",
+        detail: `A 1h candle closed at ${f2(h1.close)}, below EMA slow ${f2(h1.emaSlow)}, with MACD momentum negative (${f4(h1.macdHist)}): the uptrend has broken.`,
+      };
+    }
   }
   return {
     exit: false,
