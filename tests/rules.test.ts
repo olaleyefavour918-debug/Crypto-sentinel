@@ -25,7 +25,7 @@ describe("BUY rule (1h signal + 4h confirmation)", () => {
     const { h1, h4 } = signalMarket();
     const ev = evaluateBuy({ h1, h4, now: NOW, settings: S });
     assert.equal(ev.status, "SIGNAL");
-    assert.equal(ev.conditions.length, 12);
+    assert.equal(ev.conditions.length, 13);
     assert.ok(ev.conditions.every((c) => c.passed && c.evaluated));
     assert.ok(ev.indicators.h1.rsi! >= 50 && ev.indicators.h1.rsi! <= 65);
     assert.ok(ev.indicators.h1.macdHist! > 0);
@@ -51,6 +51,13 @@ describe("BUY rule (1h signal + 4h confirmation)", () => {
     const ev = evaluateBuy({ h1: spiked, h4, now: NOW, settings: S });
     assert.equal(ev.status, "NO_SIGNAL");
     assert.ok(failed(ev).includes("h1_not_extended"));
+  });
+  it("quality gate: a late entry (price already far above its 24h low) is not a BUY", () => {
+    const { h1, h4 } = signalMarket();
+    const dipped = h1.map((c, i) => (i === h1.length - 20 ? { ...c, low: c.low - 1500 } : c));
+    const ev = evaluateBuy({ h1: dipped, h4, now: NOW, settings: S });
+    assert.equal(ev.status, "NO_SIGNAL");
+    assert.deepEqual(failed(ev), ["h1_not_late"]);
   });
   it("quality gate: a 4h chart that is already exhausted (RSI very high) is not a BUY", () => {
     const { h1 } = signalMarket();

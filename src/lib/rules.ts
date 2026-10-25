@@ -113,7 +113,7 @@ const f4 = (n: number | null) => (n === null ? "n/a" : String(Number(n.toPrecisi
  * a BUY rarer (never create one): real buying volume, a trend that is actually rising (not a flat range), price not
  * stretched far above its average (chasing a spike), and the 4h chart agreeing in momentum without being exhausted.
  */
-export const QUALITY = { minVolumeRatio: 0.8, maxStretchAtr: 2.5, slopeBars: 5, h4RsiCeiling: 72 } as const;
+export const QUALITY = { minVolumeRatio: 0.8, maxStretchAtr: 2.5, slopeBars: 5, h4RsiCeiling: 72, lateLookback: 24, maxRiseAtr: 7 } as const;
 
 export function qualityGates(h1: Candle[], h4: Candle[], s: Settings, snap1: TimeframeSnapshot): Array<[string, string, boolean, string]> {
   const out: Array<[string, string, boolean, string]> = [];
@@ -133,6 +133,12 @@ export function qualityGates(h1: Candle[], h4: Candle[], s: Settings, snap1: Tim
   const fast = snap1.emaFast;
   const stretch = atr1 && atr1 > 0 && fast !== null ? (last.close - fast) / atr1 : null;
   out.push(["h1_not_extended", `Price is not stretched more than ${QUALITY.maxStretchAtr}× ATR above EMA${s.emaFast} (not chasing a spike)`, stretch !== null && stretch <= QUALITY.maxStretchAtr, stretch === null ? "ATR unavailable" : `${stretch.toFixed(2)}× ATR above EMA${s.emaFast}`]);
+
+  // Late-entry guard: if price has already climbed many ATRs above its 24h low, most of the move is behind us.
+  const lows = h1.slice(-QUALITY.lateLookback).map((c) => c.low);
+  const lowest = Math.min(...lows);
+  const rise = atr1 && atr1 > 0 ? (last.close - lowest) / atr1 : null;
+  out.push(["h1_not_late", `Price has not already risen more than ${QUALITY.maxRiseAtr}× ATR above its ${QUALITY.lateLookback}h low (not a late entry)`, rise !== null && rise <= QUALITY.maxRiseAtr, rise === null ? "ATR unavailable" : `${rise.toFixed(1)}× ATR above the ${QUALITY.lateLookback}h low (${f2(lowest)})`]);
 
   const ser4 = computeSeries(h4, s);
   const hist4 = ser4.macdHist[h4.length - 1];

@@ -153,7 +153,7 @@ describe("failure isolation & outages (never invent data or trades)", () => {
     await x.run();
     const [ev] = await x.q<{ conditions: Array<{ id: string; passed: boolean }>; status: string }>("select conditions, status from signal_evaluations where symbol = 'BTCUSDT'");
     assert.equal(ev.status, "SIGNAL");
-    assert.equal(ev.conditions.length, 12);
+    assert.equal(ev.conditions.length, 13);
     assert.ok(ev.conditions.every((c) => c.passed));
   });
 });
