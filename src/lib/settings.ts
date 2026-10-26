@@ -24,7 +24,6 @@ export const DEFAULT_SETTINGS: Settings = {
   entryWindowMinutes: 30,
   directionalEnabled: true,
   directionalEmailEnabled: true,
-  earlyAlertsEnabled: true,
   slippagePct: 0.05,
   minRiskReward: 1.5,
 };
@@ -50,7 +49,7 @@ const NUMBER_RULES: Record<string, NumRule> = {
   minRiskReward: { min: 1, max: 5 },
 };
 
-const BOOLEAN_KEYS = ["buyEmailEnabled", "sellEmailEnabled", "trendExitEnabled", "directionalEnabled", "directionalEmailEnabled", "earlyAlertsEnabled"] as const;
+const BOOLEAN_KEYS = ["buyEmailEnabled", "sellEmailEnabled", "trendExitEnabled", "directionalEnabled", "directionalEmailEnabled"] as const;
 
 const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
 

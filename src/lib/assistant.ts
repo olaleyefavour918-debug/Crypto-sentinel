@@ -34,7 +34,6 @@ export interface AssistantAnswer {
 export const SIGNAL_GUIDE = [
   "BUY / SELL — the original spot paper-trading rules. BUY opens a simulated spot position when the 1h and 4h trend, RSI and MACD conditions line up; SELL closes that simulated position (stop, target or trend exit). SELL only ever means 'exit a spot holding'; it is NOT a short.",
   "LONG / SHORT — a separate directional analysis. LONG = conditions favour upward movement, SHORT = conditions favour downward movement. Each comes with reference entry, stop and target levels. They open no paper position and place no order; their outcomes are tracked only to measure performance.",
-  "EARLY heads-up — an unconfirmed notice that a coin may be turning up before the strict BUY conditions are met. It opens no paper position and places no order, and many early turns fail, so it is only a prompt to look at the chart yourself. At most one per coin every 6 hours.",
   "NEUTRAL — conditions are unclear, contradictory or too weak (or reward/risk is poor after costs), so nothing is signalled.",
   "So a BUY is not automatically a futures LONG, and a SELL is not automatically a SHORT. You can see BUY and SHORT (or SELL and LONG) at the same time because they answer different questions.",
 ].join("\n");
