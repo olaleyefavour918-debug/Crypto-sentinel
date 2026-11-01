@@ -1,4 +1,4 @@
-import { geq, leq } from "./floatcmp";
+import { geq, gt, leq, RSI_SCALE } from "./floatcmp";
 import { fmtPrice } from "./format";
 import { checkContinuity, computeSeries, evaluateBuy, expectedLastClosedStart, requiredCandles } from "./rules";
 import {
@@ -182,6 +182,16 @@ const range = (c: Candle) => c.high - c.low;
 const lowerWick = (c: Candle) => Math.min(c.open, c.close) - c.low;
 const upperWick = (c: Candle) => c.high - Math.max(c.open, c.close);
 
+/** b6: RSI dipped to the oversold level within the window and has recovered by the required amount and is rising. Ties are decided without floating-point noise. */
+export function rsiRecovering(minRsi: number | null, rNow: number | null, rPrev: number | null): boolean {
+  return minRsi !== null && leq(minRsi, SETUP.rsiOversold, RSI_SCALE) && rNow !== null && rPrev !== null && geq(rNow, minRsi + SETUP.rsiRecovery, RSI_SCALE) && gt(rNow, rPrev, RSI_SCALE);
+}
+
+/** e2: RSI reached the overbought level within the window and has rolled over by the required amount. */
+export function rsiRollingOver(maxRsi: number | null, rNow: number | null): boolean {
+  return maxRsi !== null && rNow !== null && geq(maxRsi, SETUP.rsiOverbought, RSI_SCALE) && leq(rNow, maxRsi - SETUP.rsiRollover, RSI_SCALE);
+}
+
 /** Net reward/risk after round-trip fees and slippage. */
 function netRR(entry: number, stop: number, target: number, s: Settings): { rr: number; net: number } {
   const risk = entry - stop;
@@ -247,7 +257,7 @@ export function evaluateBounce(input: EvalInput): SetupEval {
   const win8 = rs.slice(-8).filter((v): v is number => v !== null);
   const minRsi = win8.length ? Math.min(...win8) : null;
   const rNow = rs[i], rPrev = rs[i - 1];
-  const recovering = minRsi !== null && minRsi <= SETUP.rsiOversold && rNow !== null && rPrev !== null && rNow >= minRsi + SETUP.rsiRecovery && rNow > rPrev;
+  const recovering = rsiRecovering(minRsi, rNow, rPrev);
   conds.push(cond("b6_rsi", `RSI was at or below ${SETUP.rsiOversold} in the last 8 candles and is recovering`, recovering,
     minRsi === null || rNow === null ? "RSI unavailable" : `Low ${x1(minRsi)}, now ${x1(rNow)}${rPrev !== null ? ` (previous ${x1(rPrev)})` : ""}`, "trigger"));
 
@@ -359,7 +369,7 @@ export function evaluateExitWarning(input: EvalInput): SetupEval {
   const rNow = rs[i];
   const s4 = computeSeries(input.h4Closed, s);
   const r4 = s4.rsi[input.h4Closed.length - 1];
-  const rolling = maxRsi !== null && rNow !== null && maxRsi >= SETUP.rsiOverbought && rNow <= maxRsi - SETUP.rsiRollover;
+  const rolling = rsiRollingOver(maxRsi, rNow);
   const h4Over = r4 !== null && r4 >= 70;
   conds.push(cond("e2_rsi", `RSI was overbought (${SETUP.rsiOverbought}+) and is rolling over, or 4H RSI is 70+`, rolling || h4Over,
     `1h RSI high ${maxRsi === null ? "n/a" : x1(maxRsi)}, now ${rNow === null ? "n/a" : x1(rNow)}; 4h RSI ${r4 === null ? "n/a" : x1(r4)}`, "trigger"));

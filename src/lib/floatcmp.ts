@@ -17,3 +17,8 @@ const tol = (scale: number): number => REL_TOL * Math.abs(scale);
 export const geq = (a: number, b: number, scale: number): boolean => a >= b - tol(scale);
 /** a <= b, same tolerance. */
 export const leq = (a: number, b: number, scale: number): boolean => a <= b + tol(scale);
+/** a > b, same tolerance (a difference below floating-point noise is NOT "greater"). */
+export const gt = (a: number, b: number, scale: number): boolean => a > b + tol(scale);
+
+/** RSI lives on a 0..100 scale and is mathematically price-scale free, but its last digits are not. */
+export const RSI_SCALE = 100;

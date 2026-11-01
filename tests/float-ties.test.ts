@@ -72,3 +72,27 @@ describe("zone width guard (structure)", () => {
     assert.deepEqual(findPivots([], 3, 10), { highs: [], lows: [] });
   });
 });
+
+import { rsiRecovering, rsiRollingOver } from "@/lib/setups";
+import { SETUP } from "@/lib/setups";
+
+describe("RSI comparisons ignore floating-point noise but keep real differences", () => {
+  const NOISE = [-3e-13, -3e-15, 0, 3e-15, 3e-13];
+  it("'RSI is rising' is false for a tie whatever the rounding noise, and true for a real rise", () => {
+    for (const n of NOISE) assert.equal(rsiRecovering(25, 42.2 + n, 42.2), false, `noise ${n}`);
+    assert.equal(rsiRecovering(25, 42.3, 42.2), true);
+    assert.equal(rsiRecovering(25, 42.1999, 42.2), false);
+  });
+  it("the recovery and oversold thresholds are inclusive and noise-proof", () => {
+    const need = 25 + SETUP.rsiRecovery;
+    for (const n of NOISE) assert.equal(rsiRecovering(25, need + n, need - 1), true, `recovery tie, noise ${n}`);
+    assert.equal(rsiRecovering(25, need - 0.01, need - 1), false);
+    for (const n of NOISE) assert.equal(rsiRecovering(SETUP.rsiOversold + n, 60, 50), true, `oversold tie, noise ${n}`);
+    assert.equal(rsiRecovering(SETUP.rsiOversold + 0.01, 60, 50), false);
+  });
+  it("the overbought and roll-over thresholds are inclusive and noise-proof", () => {
+    for (const n of NOISE) assert.equal(rsiRollingOver(SETUP.rsiOverbought + n, SETUP.rsiOverbought + n - SETUP.rsiRollover), true, `noise ${n}`);
+    assert.equal(rsiRollingOver(SETUP.rsiOverbought - 0.01, 50), false);
+    assert.equal(rsiRollingOver(75, 75 - SETUP.rsiRollover + 0.01), false);
+  });
+});
