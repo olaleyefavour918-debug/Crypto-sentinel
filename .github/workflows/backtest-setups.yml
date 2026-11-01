@@ -1,5 +1,5 @@
-# Manual only. Downloads public market candles (read-only, no keys) and back-tests the setup strategies on paper.
-# It places no orders, touches no database and sends no email. Results appear in the run summary and as a downloadable artifact.
+# AUDIT BRANCH VERSION (not on main). Read-only diagnosis of the signal engine on real market data.
+# Places no orders, touches no database, sends no email.
 name: backtest-setups
 on:
   workflow_dispatch:
@@ -8,17 +8,17 @@ on:
         description: "Days of history to replay (after a 40-day warm-up)"
         default: "150"
       symbols:
-        description: "Comma-separated USDT pairs (BTCUSDT must be included for the market guard)"
+        description: "Comma-separated USDT pairs (BTCUSDT must be included)"
         default: "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT,DOGEUSDT,ADAUSDT,LINKUSDT"
       source:
-        description: "auto, binance or bybit"
+        description: "unused on this branch (audit runs Binance and Bybit)"
         default: "auto"
 permissions:
   contents: read
 jobs:
-  backtest:
+  audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,17 +26,23 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Unit tests for the back-test engine
-        run: npx tsx --tsconfig tests/tsconfig.json --test tests/setups-backtest.test.ts tests/setups.test.ts tests/lifecycle.test.ts
-      - name: Run back-test
-        run: npx tsx --tsconfig tests/tsconfig.json scripts/backtest-setups.ts --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --source "${{ inputs.source }}" --out backtest-out
-      - name: Publish summary
+      - name: Audit on Binance candles
+        id: binance
+        continue-on-error: true
+        run: npx tsx --tsconfig tests/tsconfig.json scripts/audit/run.ts --source binance --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --out audit-out
+      - name: Audit on Bybit candles
+        id: bybit
+        continue-on-error: true
+        run: npx tsx --tsconfig tests/tsconfig.json scripts/audit/run.ts --source bybit --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --out audit-out
+      - name: Outcome
         if: always()
         run: |
-          if [ -f backtest-out/report.md ]; then cat backtest-out/report.md >> "$GITHUB_STEP_SUMMARY"; else echo "No report was produced (see the log of the previous step)." >> "$GITHUB_STEP_SUMMARY"; fi
+          echo "binance step: ${{ steps.binance.outcome }}"
+          echo "bybit step: ${{ steps.bybit.outcome }}"
+          ls -la audit-out || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: backtest-setups
-          path: backtest-out
+          name: signal-audit
+          path: audit-out
           if-no-files-found: ignore
