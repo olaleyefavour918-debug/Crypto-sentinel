@@ -29,16 +29,16 @@ jobs:
       - name: Audit on Binance candles
         id: binance
         continue-on-error: true
-        run: npx tsx --tsconfig tests/tsconfig.json scripts/audit/run.ts --source binance --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --out audit-out
-      - name: Audit on Bybit candles
-        id: bybit
+        run: mkdir -p audit-out && npx tsx --tsconfig tests/tsconfig.json scripts/audit/run.ts --source binance --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --out audit-out
+      - name: Probe real Bybit data access
+        id: probe
         continue-on-error: true
-        run: npx tsx --tsconfig tests/tsconfig.json scripts/audit/run.ts --source bybit --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --out audit-out
+        run: npx tsx --tsconfig tests/tsconfig.json scripts/audit/probe-bybit.ts | tee audit-out/probe-bybit.md
       - name: Outcome
         if: always()
         run: |
           echo "binance step: ${{ steps.binance.outcome }}"
-          echo "bybit step: ${{ steps.bybit.outcome }}"
+          echo "probe step: ${{ steps.probe.outcome }}"
           ls -la audit-out || true
       - uses: actions/upload-artifact@v4
         if: always()

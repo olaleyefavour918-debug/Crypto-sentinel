@@ -105,6 +105,7 @@ export function bounceSection(ctxs: Ctx[], P: Period): string[] {
   }
   L.push(`Pivot index/time consistency: ${pivChecked} pivots checked, ${badIdx} with a mismatched candle time, ${tail} inside the newest ${STRUCTURE.pivotK1h} candles (those can never be pivots). ${badIdx + tail === 0 ? "No indexing error found." : "PROBLEM FOUND."}`);
   let diffs = 0, compared = 0;
+  const mism: string[] = [];
   const scale = (a: Candle[]): Candle[] => a.map((x) => ({ ...x, open: x.open * 1000, high: x.high * 1000, low: x.low * 1000, close: x.close * 1000, turnover: x.turnover * 1000 }));
   for (const c of ctxs) {
     for (const h of c.hours.filter((x) => x.p % 50 === 0 && x.bounce.dataOk)) {
@@ -114,10 +115,15 @@ export function bounceSection(ctxs: Ctx[], P: Period): string[] {
       for (const id of ["BOUNCE", "EXIT_WARNING"] as const) {
         const a = evaluateStrategy(id, base), b = evaluateStrategy(id, scaled);
         compared++;
-        if (JSON.stringify(a.conditions.map((x) => x.passed)) !== JSON.stringify(b.conditions.map((x) => x.passed))) diffs++;
+        if (JSON.stringify(a.conditions.map((x) => x.passed)) !== JSON.stringify(b.conditions.map((x) => x.passed))) {
+          diffs++;
+          const bad = a.conditions.filter((x, i) => x.passed !== b.conditions[i].passed).map((x, i) => `${x.id}: "${x.detail}" vs scaled "${b.conditions.find((y) => y.id === x.id)?.detail}"`);
+          mism.push(`${c.symbol} ${new Date(h.ct).toISOString()} ${id}: ${bad.join(" | ")}`);
+        }
       }
     }
   }
+  for (const m of mism.slice(0, 5)) L.push(`  differing case: ${m}`);
   L.push(`Scale invariance (all prices x1000): ${compared} evaluations compared, ${diffs} differed in which conditions passed. ${diffs === 0 ? "No hidden absolute-price constants." : "PROBLEM FOUND: a threshold depends on the price level."}`);
   L.push("");
 

@@ -44,7 +44,7 @@ export function qualitySection(ctxs: Ctx[], P: Period, btc5: Candle[] | null, ra
 
   L.push("### 5d. Market regime in the two segments (buy-and-hold, no costs)");
   const rows = ctxs.map((c) => {
-    const a = priceAt(c, P.startMs), b = priceAt(c, P.splitMs), z = priceAt(c, P.endMs);
+    const a = priceAt(c, P.startMs), b = priceAt(c, P.splitMs), z = priceAt(c, P.endMs - M5);
     return [c.symbol.replace("USDT", ""), a && b ? fx((b / a - 1) * 100, 1) + "%" : "n/a", b && z ? fx((z / b - 1) * 100, 1) + "%" : "n/a"];
   });
   L.push(...table(["coin", "in-sample move", "out-of-sample move"], rows));

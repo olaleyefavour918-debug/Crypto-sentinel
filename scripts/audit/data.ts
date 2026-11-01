@@ -55,7 +55,7 @@ export async function probe(url: string): Promise<string> {
     const r = await fetch(url, { method: "GET" });
     const text = (await r.text()).slice(0, 160).replace(/\s+/g, " ");
     return `HTTP ${r.status} · ${text}`;
-  } catch (e) { return `unreachable: ${String(e)}`; }
+  } catch (e) { const cause = (e as { cause?: { code?: string; message?: string } }).cause; return `unreachable: ${String(e)} ${cause?.code ?? ""} ${cause?.message ?? ""}`; }
 }
 
 /** Random-walk 5m candles for checking that the code runs. Says nothing about real markets. */
