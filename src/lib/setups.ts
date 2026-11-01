@@ -1,3 +1,4 @@
+import { geq, leq } from "./floatcmp";
 import { fmtPrice } from "./format";
 import { checkContinuity, computeSeries, evaluateBuy, expectedLastClosedStart, requiredCandles } from "./rules";
 import {
@@ -261,8 +262,8 @@ export function evaluateBounce(input: EvalInput): SetupEval {
     const c = h1[x], pc = h1[x - 1];
     if (!c || !pc || !(range(c) > 0)) continue;
     const bullish = c.close > c.open;
-    const topClose = c.close >= c.low + SETUP.reversalCloseFrac * range(c);
-    const strongRecovery = lowerWick(c) >= body(c) || c.close > pc.high;
+    const topClose = geq(c.close, c.low + SETUP.reversalCloseFrac * range(c), c.high);
+    const strongRecovery = geq(lowerWick(c), body(c), c.high) || c.close > pc.high;
     if (bullish && topClose && strongRecovery) { revIdx = x; break; }
   }
   conds.push(cond("b8_reversal", "A bullish reversal candle formed (closes in its top 40% with a lower wick or above the prior high)", revIdx !== null,
@@ -382,7 +383,7 @@ export function evaluateExitWarning(input: EvalInput): SetupEval {
       if (!c || !pc || !(range(c) > 0)) continue;
       const atZone = c.high >= res.low - 0.25 * atr;
       if (!atZone) continue;
-      const star = upperWick(c) >= 2 * Math.max(body(c), 1e-12) && c.close <= c.low + 0.4 * range(c);
+      const star = geq(upperWick(c), 2 * Math.max(body(c), 1e-12), c.high) && leq(c.close, c.low + 0.4 * range(c), c.high);
       const engulf = c.close < c.open && pc.close > pc.open && c.close < pc.open && c.open >= pc.close;
       const belowLow = c.close < pc.low;
       if (star) { bearIdx = x; bearKind = "shooting-star rejection"; break; }

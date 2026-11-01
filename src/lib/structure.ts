@@ -18,7 +18,12 @@ export const STRUCTURE = {
   clusterAtr: 0.5,
   /** A zone is widened by this many ATRs on each side. */
   padAtr: 0.25,
-  /** Zones wider than this (ATRs) are too vague to trade against. */
+  /**
+   * Zones wider than this (ATRs) are too vague to trade against. NOTE: with the current construction a zone is at most
+   * clusterAtr + 2 * padAtr = 1.0 ATR wide, so this guard cannot trigger today (confirmed on 150 days of real data:
+   * widest zone 1.00 ATR). It is kept, unchanged, as a safety net that becomes active if clustering or padding is ever
+   * widened; `MAX_CONSTRUCTED_WIDTH_ATR` and a test pin that relationship so it cannot silently drift.
+   */
   maxWidthAtr: 1.5,
   /** Tolerance (ATRs) when comparing pivots for higher/lower highs and lows. */
   trendTolAtr: 0.15,
@@ -29,6 +34,9 @@ export const STRUCTURE = {
   /** A breakout counts as false if price closes back inside within this many candles. */
   falseWithin: 3,
 } as const;
+
+/** Widest zone the current clustering + padding can produce, in ATRs (see `STRUCTURE.maxWidthAtr`). */
+export const MAX_CONSTRUCTED_WIDTH_ATR = STRUCTURE.clusterAtr + 2 * STRUCTURE.padAtr;
 
 export interface Pivot {
   index: number;
