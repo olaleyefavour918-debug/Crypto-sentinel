@@ -34,6 +34,7 @@ export interface AssistantAnswer {
 export const SIGNAL_GUIDE = [
   "BUY / SELL — the original spot paper-trading rules. BUY opens a simulated spot position when the 1h and 4h trend, RSI and MACD conditions line up; SELL closes that simulated position (stop, target or trend exit). SELL only ever means 'exit a spot holding'; it is NOT a short.",
   "LONG / SHORT — a separate directional analysis. LONG = conditions favour upward movement, SHORT = conditions favour downward movement. Each comes with reference entry, stop and target levels. They open no paper position and place no order; their outcomes are tracked only to measure performance.",
+  "Setups — a third, separate analysis: early reads (on the unfinished candle, never called confirmed), Support-Bounce setups and independent exit warnings. They open no paper trade and place no order. By default they are only recorded on the dashboard (alerts off) until you switch on \"Alert me about setups\" in Settings. None of it is validated: results so far are too few or not better than chance, so treat them as information, not instructions.",
   "NEUTRAL — conditions are unclear, contradictory or too weak (or reward/risk is poor after costs), so nothing is signalled.",
   "So a BUY is not automatically a futures LONG, and a SELL is not automatically a SHORT. You can see BUY and SHORT (or SELL and LONG) at the same time because they answer different questions.",
 ].join("\n");

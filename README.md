@@ -47,6 +47,17 @@ A BUY is not automatically a LONG and a SELL is not automatically a SHORT; both 
 
 No new environment variables are needed. The new database tables are created automatically on the first run after deploying.
 
+## Setups: early reads, support bounces and exit warnings (paper analysis only)
+
+A third, separate analysis runs every 5 minutes next to BUY/SELL and LONG/SHORT. It opens no paper trade, closes none, and places no order.
+
+- **Trend BUY** wraps the existing BUY rules unchanged and adds an early read taken on the unfinished 1H candle.
+- **Support-Bounce** looks for an established support zone with signs of recovery (separate tracking; never opens a paper trade).
+- **Exit warning** is independent of any open trade. It does not close a paper trade; the existing SELL rules are unchanged.
+- Status lifecycle: WATCH → POTENTIAL (unfinished candle, never called confirmed) → CONFIRMED (closed candle) → EXPIRED, with the reason.
+- **Alerts are OFF by default** ("recording only"): setups appear on the dashboard but nothing is emailed or pushed. Turn on *Alert me about setups* in Settings to receive them. Early reads go to the phone only; confirmed setups also email. Rate limits apply to both.
+- Back-test: run the **backtest-setups** workflow from the Actions tab (manual). It replays history with fees, slippage and an execution delay, splits the data 60/40 in-sample/out-of-sample, and reports every strategy separately. The strongest wording it can ever give is "SCREEN PASSED", a minimum filter and not proof. Fewer than 30 signals is always reported as INCONCLUSIVE.
+
 ## Deploying on Vercel (step by step)
 
 You need: a GitHub account, a Vercel account (free Hobby is fine), a Resend account (free).

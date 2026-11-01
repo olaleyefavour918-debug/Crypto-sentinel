@@ -327,6 +327,19 @@ const rowSpecs: RowSpec[] = [
   { id: "bounce_early_no4h", label: "Support-Bounce · early (4H conflict check OFF, sensitivity run)", note: "sensitivity run", pick: (c) => c.off.sigs.filter((s) => s.strategy === "BOUNCE" && s.kind === "POTENTIAL") },
 ];
 
+/**
+ * Is a warning's precision better than a random moment? Needs at least MIN_SIGNALS warnings and a margin of 2 standard errors
+ * (one-sided z test against the baseline rate). Anything less is not described as better than chance.
+ */
+export function exitVerdict(n: number, fell: number, baselinePct: number | null): string {
+  if (n < MIN_SIGNALS) return `INCONCLUSIVE (only ${n} confirmed warning(s); ${MIN_SIGNALS} needed)`;
+  if (baselinePct === null) return "INCONCLUSIVE (no baseline)";
+  const b = baselinePct / 100, p = fell / n;
+  const z = (p - b) / Math.sqrt((b * (1 - b)) / n);
+  if (z >= 2) return `Better than a random moment in this sample (z=${z.toFixed(1)}). Still not proof of future value; no out-of-sample split is applied to this measure`;
+  return `NOT VALIDATED: ${(p * 100).toFixed(1)}% vs ${baselinePct.toFixed(1)}% for a random moment (z=${z.toFixed(1)}); not distinguishable from chance`;
+}
+
 export interface ExitWarningResult {
   confirmed: { n: number; fellFirst: number; roseFirst: number; neither: number; precisionPct: number | null };
   early: { n: number; fellFirst: number; roseFirst: number; neither: number; precisionPct: number | null };
@@ -457,7 +470,7 @@ export function buildReport(coins: CoinData[], period: { startMs: number; endMs:
   const exitWarning: ExitWarningResult = {
     confirmed: ewConfirmed, early: ewEarly, baseline: { n: bN, fellFirstPct: baselineFell },
     note: "Precision = share of warnings after which price fell 1.5 hourly ATR before rising 1.5 ATR within 24h (execution delay 5 min). The baseline is the same measure at EVERY hourly close, i.e. what a random moment gives.",
-    verdict: ewConfirmed.n < MIN_SIGNALS ? `INCONCLUSIVE (only ${ewConfirmed.n} confirmed warning(s); ${MIN_SIGNALS} needed)` : ewConfirmed.precisionPct !== null && baselineFell !== null && ewConfirmed.precisionPct > baselineFell ? "Above the random baseline in this sample (not proof; no out-of-sample split applied to this count)" : "NOT VALIDATED (not better than a random moment)",
+    verdict: exitVerdict(ewConfirmed.n, ewConfirmed.fellFirst, baselineFell),
   };
 
   // False negatives: hindsight pivot lows that were followed by +2R before -1R (R = 1.5 hourly ATR), and whether a LONG-type signal appeared near them.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { aggregate, bootstrapMeanCI, firstBarrier, formatReport, buildReport, M5, replay, rng, simulateSignals, simulateTrade, statsOf, verdict, type Trade } from "@/lib/setups-backtest";
+import { exitVerdict, aggregate, bootstrapMeanCI, firstBarrier, formatReport, buildReport, M5, replay, rng, simulateSignals, simulateTrade, statsOf, verdict, type Trade } from "@/lib/setups-backtest";
 import type { Candle } from "@/lib/types";
 
 const H = 3600_000;
@@ -125,6 +125,20 @@ describe("back-test: statistics and the verdict rule", () => {
   });
   it("negative average is NOT VALIDATED", () => {
     assert.equal(verdict(mk(40, -1, -0.5), mk(40, -1.2, -0.6)).label, "NOT VALIDATED");
+  });
+});
+
+describe("back-test: exit-warning verdict", () => {
+  it("47% against a 47% random baseline is NOT better than chance", () => {
+    assert.match(exitVerdict(1774, 833, 46.9), /^NOT VALIDATED/);
+  });
+  it("too few warnings is INCONCLUSIVE", () => {
+    assert.match(exitVerdict(12, 11, 47), /^INCONCLUSIVE/);
+  });
+  it("a large, clear margin over the baseline is described only as better in this sample", () => {
+    const v = exitVerdict(400, 240, 47);
+    assert.match(v, /^Better than a random moment in this sample/);
+    assert.match(v, /not proof/);
   });
 });
 

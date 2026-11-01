@@ -52,6 +52,17 @@ describe("setup engine: persistence, shadow mode and alerts (database)", () => {
     assert.equal(pushed.events, 1);
     assert.equal((await pushNewSetups(t.db, { now: () => NOW + 7 * 60_000 })).events, 0, "each event is pushed at most once");
   });
+  it("a confirmed warning for a coin that was alerted within 12 hours is recorded but not alerted again", async () => {
+    await q("delete from setups"); await q("delete from email_notifications"); await q("delete from setup_events");
+    const old = await q(`insert into setups (symbol, strategy, status, first_seen_at, status_since, last_scan_at, conditions, reasons, expired_at, expire_reason)
+      values ('SOLUSDT','EXIT_WARNING','EXPIRED', now() - interval '3 hours', now() - interval '2 hours', now() - interval '2 hours', '[]'::jsonb, '[]'::jsonb, now() - interval '2 hours', 'the validity window ended') returning id`);
+    await q("insert into setup_events (setup_id, kind, at, price, note, notify) values ($1, 'CONFIRMED', now() - interval '3 hours', 100, 'earlier alert', true)", [old[0].id]);
+    await processSetups(t.db, input({ settings: { ...S, setupAlertsEnabled: true } }));
+    const fresh = await q("select id, status from setups where strategy = 'EXIT_WARNING' and status = 'CONFIRMED'");
+    assert.equal(fresh.length, 1, "the new setup is still recorded and shown on the dashboard");
+    assert.equal((await q("select 1 from setup_events where setup_id = $1 and kind = 'CONFIRMED' and notify", [fresh[0].id])).length, 0);
+    assert.equal((await q("select 1 from email_notifications where kind = 'SETUP'")).length, 0);
+  });
   it("a paused coin or the engine switched off records nothing", async () => {
     await q("delete from setups");
     assert.deepEqual(await processSetups(t.db, input({ enabled: false })), []);

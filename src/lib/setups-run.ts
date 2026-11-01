@@ -76,6 +76,21 @@ async function allowEarlyAlert(q: Queryable, symbol: string, strategy: StrategyI
   return Number(day.rows[0].n) < EARLY_DAILY_CAP;
 }
 
+const CONFIRMED_COOLDOWN_MS = 12 * 3600_000;
+const CONFIRMED_DAILY_CAP = 10;
+
+/** Confirmed setups can be frequent (exit warnings especially), so they are rate limited too: 1 per coin per strategy per 12h and 10 per day. */
+async function allowConfirmedAlert(q: Queryable, symbol: string, strategy: StrategyId): Promise<boolean> {
+  const perCoin = await q.query<Row>(
+    `select 1 from setup_events e join setups s on s.id = e.setup_id
+      where e.kind = 'CONFIRMED' and e.notify and s.symbol = $1 and s.strategy = $2 and e.created_at > now() - ($3::int * interval '1 millisecond') limit 1`,
+    [symbol, strategy, CONFIRMED_COOLDOWN_MS],
+  );
+  if (perCoin.rows.length > 0) return false;
+  const day = await q.query<Row>("select count(*)::int as n from setup_events where kind = 'CONFIRMED' and notify and created_at > now() - interval '24 hours'");
+  return Number(day.rows[0].n) < CONFIRMED_DAILY_CAP;
+}
+
 /**
  * Runs the three strategies for one coin, advances each lifecycle, records events, queues the alerts the user's settings allow and tracks
  * Support-Bounce outcomes. Opens and closes NO paper trade, places NO order. Safe to call every 5 minutes.
@@ -149,7 +164,7 @@ function describe(base: string, strategy: StrategyId, ev: SetupEvent, alerted: b
 
 async function shouldNotify(q: Queryable, s: Settings, symbol: string, strategy: StrategyId, kind: "POTENTIAL" | "CONFIRMED"): Promise<boolean> {
   if (!s.setupAlertsEnabled) return false; // shadow mode
-  if (kind === "CONFIRMED") return strategy !== "TREND_BUY"; // the existing BUY alert already covers a confirmed trend BUY
+  if (kind === "CONFIRMED") return strategy !== "TREND_BUY" && (await allowConfirmedAlert(q, symbol, strategy)); // the existing BUY alert already covers a confirmed trend BUY
   if (!s.setupEarlyPushEnabled) return false;
   return allowEarlyAlert(q, symbol, strategy);
 }
