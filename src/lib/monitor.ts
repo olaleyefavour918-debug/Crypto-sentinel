@@ -37,6 +37,8 @@ export interface MonitorResult {
   errors: string[];
   evaluationStatus?: string;
   price?: number;
+  /** Where the time went in this pass (milliseconds), for measuring scan-to-alert latency. Never affects decisions. */
+  timings?: { tickersMs: number; klinesMs: number; evaluateMs: number; emailMs: number; pushMs: number; totalMs: number };
 }
 
 /**
@@ -87,7 +89,7 @@ export async function runMonitor(deps: MonitorDeps): Promise<MonitorResult> {
   try {
     await db.query(
       "update job_runs set finished_at = $2::timestamptz, status = $3, duration_ms = $4, message = $5, details = $6::jsonb where id = $1",
-      [jobRunId, ts(clock()), result.status, Math.max(0, clock() - startedAt), result.message.slice(0, 500), JSON.stringify({ actions: result.actions, errors: result.errors, evaluation: result.evaluationStatus, price: result.price })],
+      [jobRunId, ts(clock()), result.status, Math.max(0, clock() - startedAt), result.message.slice(0, 500), JSON.stringify({ actions: result.actions, errors: result.errors, evaluation: result.evaluationStatus, price: result.price, timings: result.timings })],
     );
   } finally {
     await db.query("update job_lock set locked_until = now() where name = $1 and owner = $2", [LOCK_NAME, owner]).catch(() => undefined);
@@ -141,6 +143,7 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
   const limit = candlesToFetch(settings);
   const deadline = clock() + RUN_TIME_BUDGET_MS;
   const symbols = assets.map((a) => a.symbol);
+  const t0 = clock();
 
   // 1) One request for every ticker.
   let tickers: Map<string, import("./types").Ticker24h | BybitError> | null = null;
@@ -150,6 +153,8 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
   } catch (e) {
     tickerError = `tickers — ${sanitizeError(e)}`;
   }
+
+  const t1 = clock();
 
   // 2) Klines for each coin (bounded concurrency to respect exchange rate limits).
   const fetched: AssetFetch[] = await mapLimit(assets, ASSET_FETCH_CONCURRENCY, async (a): Promise<AssetFetch> => {
@@ -162,6 +167,7 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
     }
   });
 
+  const t2 = clock();
   const btcIdx = assets.findIndex((a) => a.symbol === "BTCUSDT");
   const btcH4Closed = btcIdx >= 0 && fetched[btcIdx]?.h4 ? closedCandles(fetched[btcIdx].h4 as Candle[], INTERVAL_MS["240"], clock()) : null;
 
@@ -179,6 +185,7 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
     }
   }
 
+  const t3 = clock();
   const actions = outcomes.flatMap((o) => o.actions);
   const errors = outcomes.flatMap((o) => o.errors);
   const okCount = outcomes.filter((o) => o.ok).length;
@@ -196,6 +203,7 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
     errors.push(`email queue — ${sanitizeError(e)}`);
   }
 
+  const t4 = clock();
   // 5) Phone notifications (best effort; email remains the reliable channel). Never fails the run.
   try {
     const pushed = await pushNewTrades(db, { ...deps.push, now: clock });
@@ -208,6 +216,7 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
     logger.warn("monitor.push_failed", { error: sanitizeError(e) });
   }
 
+  const t5 = clock();
   await maybePrune(db, nowMs).catch((e) => logger.warn("monitor.prune_failed", { error: sanitizeError(e) }));
 
   const status: MonitorResult["status"] = okCount === 0 ? "failed" : errors.length ? "partial" : "success";
@@ -220,6 +229,7 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
     message,
     actions,
     errors,
+    timings: { tickersMs: t1 - t0, klinesMs: t2 - t1, evaluateMs: t3 - t2, emailMs: t4 - t3, pushMs: t5 - t4, totalMs: t5 - t0 },
     evaluationStatus: outcomes.map((o) => `${baseOf(o.symbol)}:${o.evaluationStatus ?? "n/a"}`).join(" "),
     price: outcomes[0]?.price,
   };

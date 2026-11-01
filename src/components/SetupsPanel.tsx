@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { fmtPrice, pairLabel } from "@/lib/format";
+import { setupFreshness } from "@/lib/freshness";
 import { validityText } from "@/lib/lifecycle";
 import { STRATEGY_LABEL } from "@/lib/setups";
 import type { SetupView, SetupsSummary } from "@/lib/setups-run";
@@ -35,6 +36,7 @@ function statusText(s: SetupView): string {
 function Card1({ s, now }: { s: SetupView; now: number }) {
   const move = s.signalPrice && s.lastPrice ? ((s.lastPrice - s.signalPrice) / s.signalPrice) * 100 : null;
   const failed = s.conditions.filter((c) => !c.passed).length;
+  const fresh = setupFreshness(s.lastScanAt, now, s.status);
   return (
     <div className="rounded-xl border border-line-2 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -44,11 +46,15 @@ function Card1({ s, now }: { s: SetupView; now: number }) {
       <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
         <div><dt className="text-xs text-fg-mute">Signal price</dt><dd className="num">{s.signalPrice !== null ? fmtPrice(s.signalPrice) : "—"}</dd></div>
         <div><dt className="text-xs text-fg-mute">Latest price</dt><dd className="num">{s.lastPrice !== null ? fmtPrice(s.lastPrice) : "—"}{move !== null && <span className="text-fg-mute"> ({move >= 0 ? "+" : "−"}{Math.abs(move).toFixed(2)}%)</span>}</dd></div>
-        <div><dt className="text-xs text-fg-mute">Signal time (UTC)</dt><dd className="num">{s.signalPriceAt ? fmtUtc(s.signalPriceAt) : "—"}</dd></div>
+        <div><dt className="text-xs text-fg-mute">First detected (UTC)</dt><dd className="num">{fmtUtc(s.firstSeenAt)}</dd></div>
+        {s.status !== "WATCH" && <div><dt className="text-xs text-fg-mute">{s.status === "CONFIRMED" ? "Confirmed (UTC)" : s.status === "EXPIRED" ? "Expired (UTC)" : "Current status since (UTC)"}</dt><dd className="num">{fmtUtc(s.status === "EXPIRED" && s.expiredAt ? s.expiredAt : s.statusSince)}</dd></div>}
+        <div><dt className="text-xs text-fg-mute">Last checked · data source</dt><dd className={`num ${fresh.stale ? "text-down" : ""}`}>{ageLabel(s.lastScanAt, now)} · Bybit spot</dd></div>
+        <div><dt className="text-xs text-fg-mute">Signal price time (UTC)</dt><dd className="num">{s.signalPriceAt ? fmtUtc(s.signalPriceAt) : "—"}</dd></div>
         <div><dt className="text-xs text-fg-mute">Age</dt><dd className="num">{s.signalPriceAt ? ageLabel(s.signalPriceAt, now) : "—"}</dd></div>
         <div><dt className="text-xs text-fg-mute">Timeframe</dt><dd>1H setup · 4H context</dd></div>
         <div><dt className="text-xs text-fg-mute">Validity</dt><dd>{validityText(s, now)}</dd></div>
       </dl>
+      {fresh.stale && <p className="mt-2 text-xs text-down">STALE: this setup was last checked {ageLabel(s.lastScanAt, now)}. The prices shown may be out of date until the next successful scan.</p>}
       {s.status === "POTENTIAL" && <p className="mt-2 text-xs text-warn">Based on the 1H candle that is still forming. It can disappear before the candle closes.</p>}
       {s.levels && s.status !== "WATCH" && (
         <p className="num mt-2 text-xs text-fg-mute">Reference stop {fmtPrice(s.levels.stop)} · target {fmtPrice(s.levels.target)} · net reward/risk {s.levels.netRiskReward.toFixed(2)} (after costs). Reference only, no order is placed.</p>
