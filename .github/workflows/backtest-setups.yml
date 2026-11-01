@@ -18,7 +18,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,15 +30,15 @@ jobs:
         id: binance
         continue-on-error: true
         run: mkdir -p audit-out && npx tsx --tsconfig tests/tsconfig.json scripts/audit/run.ts --source binance --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --out audit-out
-      - name: Probe real Bybit data access
-        id: probe
+      - name: Audit on REAL Bybit spot data (built from public trade files)
+        id: bybit
         continue-on-error: true
-        run: npx tsx --tsconfig tests/tsconfig.json scripts/audit/probe-bybit.ts | tee audit-out/probe-bybit.md
+        run: npx tsx --tsconfig tests/tsconfig.json scripts/audit/run.ts --source bybit-trades --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --out audit-out
       - name: Outcome
         if: always()
         run: |
           echo "binance step: ${{ steps.binance.outcome }}"
-          echo "probe step: ${{ steps.probe.outcome }}"
+          echo "bybit-trades step: ${{ steps.bybit.outcome }}"
           ls -la audit-out || true
       - uses: actions/upload-artifact@v4
         if: always()

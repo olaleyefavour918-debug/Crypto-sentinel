@@ -2,7 +2,7 @@ import { DEFAULT_SETTINGS } from "@/lib/settings";
 import { M5, aggregate, replay } from "@/lib/setups-backtest";
 import type { Candle } from "@/lib/types";
 import { DAY, H1, H4, buildCtx, priceAt, simulateLive, type Ctx, type LiveOpts } from "./ctx";
-import { fetchKlines, probe, type Source } from "./data";
+import { fetchBybitTrades5m, fetchKlines, probe, type Source } from "./data";
 import { fx, mean, median, pct, table } from "./stats";
 import { hoursOf, type Period } from "./sec-trend";
 
@@ -84,10 +84,10 @@ export async function dataSection(period: Period, symbols: string[], primary: So
   const bin = new Map<string, Candle[]>(), byb = new Map<string, Candle[]>();
   let bybitOk = false, err = "";
   try {
-    for (const s of syms) { bin.set(s, await fetchKlines("binance", s, "5m", "5", M5, from, to)); byb.set(s, await fetchKlines("bybit", s, "5m", "5", M5, from, to)); }
+    for (const s of syms) { bin.set(s, await fetchKlines("binance", s, "5m", "5", M5, from, to)); byb.set(s, await fetchBybitTrades5m(s, from, to)); }
     bybitOk = [...byb.values()].every((a) => a.length > 1000);
   } catch (e) { err = String(e); }
-  L.push("### 4b. Binance vs Bybit candles (same 45 days, 5-minute)");
+  L.push("### 4b. Binance vs REAL Bybit spot candles built from Bybit's own trade files (same 45 days, 5-minute)");
   if (!bybitOk) {
     L.push(`Could not compare: ${err || "Bybit returned too little data"}. If Bybit is blocked from this machine the full back-test cannot be re-run here on Bybit data; see the recommendations.`);
     return { lines: L, bybitOk: false };

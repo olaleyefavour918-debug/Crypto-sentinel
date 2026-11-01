@@ -1,9 +1,10 @@
 import type { Candle } from "@/lib/types";
 import { M5 } from "@/lib/setups-backtest";
+import { gunzipSync } from "node:zlib";
 
 export const BINANCE = "https://data-api.binance.vision";
 export const BYBIT = "https://api.bybit.com";
-export type Source = "binance" | "bybit";
+export type Source = "binance" | "bybit" | "bybit-trades";
 
 export async function getJson(url: string): Promise<unknown> {
   let last = "";
@@ -48,7 +49,93 @@ export async function fetchKlines(source: Source, symbol: string, binanceInterva
   return res.filter((c) => c.start < toMs && !seen.has(c.start) && (seen.add(c.start), true) && [c.open, c.high, c.low, c.close].every((x) => Number.isFinite(x) && x > 0));
 }
 
-export const fetch5m = (s: Source, symbol: string, from: number, to: number) => fetchKlines(s, symbol, "5m", "5", M5, from, to);
+export const fetch5m = (s: Source, symbol: string, from: number, to: number): Promise<Candle[]> =>
+  s === "bybit-trades" ? fetchBybitTrades5m(symbol, from, to) : fetchKlines(s, symbol, "5m", "5", M5, from, to);
+
+const DAYMS = 86_400_000;
+const links = (html: string): string[] => [...html.matchAll(/href="([^"?#]+)"/g)].map((m) => m[1]).filter((x) => !x.startsWith("/") && !x.startsWith("http"));
+
+async function download(url: string): Promise<Buffer | null> {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const r = await fetch(url);
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return Buffer.from(await r.arrayBuffer());
+    } catch (e) {
+      if (attempt === 3) throw new Error(`${url}: ${String(e)}`);
+      await new Promise((s) => setTimeout(s, 2000 * (attempt + 1)));
+    }
+  }
+  return null;
+}
+
+/** Adds every trade of one Bybit spot trade file (header: id,timestamp,price,volume,side,rpi) into 5-minute buckets. */
+export function addTrades(text: string, into: Map<number, { c: Candle; ft: number; lt: number }>, fromMs: number, toMs: number): void {
+  let pos = text.indexOf("\n") + 1;
+  const n = text.length;
+  while (pos < n) {
+    let end = text.indexOf("\n", pos);
+    if (end < 0) end = n;
+    const c1 = text.indexOf(",", pos), c2 = text.indexOf(",", c1 + 1), c3 = text.indexOf(",", c2 + 1), c4 = text.indexOf(",", c3 + 1);
+    if (c1 > 0 && c4 > 0 && c4 < end) {
+      let t = Number(text.slice(c1 + 1, c2));
+      if (t < 1e12) t *= 1000;
+      const p = Number(text.slice(c2 + 1, c3)), v = Number(text.slice(c3 + 1, c4));
+      if (t >= fromMs && t < toMs && p > 0 && v >= 0) {
+        const k = Math.floor(t / M5) * M5;
+        const b = into.get(k);
+        if (!b) into.set(k, { c: { start: k, open: p, high: p, low: p, close: p, volume: v, turnover: p * v }, ft: t, lt: t });
+        else {
+          if (p > b.c.high) b.c.high = p;
+          if (p < b.c.low) b.c.low = p;
+          if (t < b.ft) { b.ft = t; b.c.open = p; }
+          if (t >= b.lt) { b.lt = t; b.c.close = p; }
+          b.c.volume += v; b.c.turnover += p * v;
+        }
+      }
+    }
+    pos = end + 1;
+  }
+}
+
+/**
+ * Real Bybit SPOT history from public.bybit.com (daily trade files), turned into 5-minute candles: open = first trade, close = last trade,
+ * high/low = extremes, volume = base quantity. A 5-minute bucket with no trades at all is filled flat from the previous close (volume 0)
+ * when the silence is at most 30 minutes; longer silences are left as gaps.
+ */
+export async function fetchBybitTrades5m(symbol: string, fromMs: number, toMs: number, concurrency = 6): Promise<Candle[]> {
+  const listing = await fetch(`https://public.bybit.com/spot/${symbol}/`);
+  if (!listing.ok) throw new Error(`public.bybit.com listing for ${symbol}: HTTP ${listing.status}`);
+  const names = new Set(links(await listing.text()));
+  const into = new Map<number, { c: Candle; ft: number; lt: number }>();
+  const tasks: Array<{ name: string }> = [];
+  const months = new Set<string>();
+  for (let d = Math.floor(fromMs / DAYMS) * DAYMS; d < toMs; d += DAYMS) {
+    const day = new Date(d).toISOString().slice(0, 10);
+    const daily = `${symbol}_${day}.csv.gz`, monthly = `${symbol}-${day.slice(0, 7)}.csv.gz`;
+    if (names.has(daily)) tasks.push({ name: daily });
+    else if (names.has(monthly) && !months.has(monthly)) { months.add(monthly); tasks.push({ name: monthly }); }
+  }
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const t = tasks[next++];
+      const buf = await download(`https://public.bybit.com/spot/${symbol}/${t.name}`);
+      if (!buf) continue;
+      addTrades(gunzipSync(buf).toString("utf8"), into, fromMs, toMs);
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  const keys = [...into.keys()].sort((a, b) => a - b);
+  const out: Candle[] = [];
+  for (const k of keys) {
+    const prev = out[out.length - 1];
+    if (prev) for (let t = prev.start + M5, filled = 0; t < k && filled < 6; t += M5, filled++) out.push({ start: t, open: prev.close, high: prev.close, low: prev.close, close: prev.close, volume: 0, turnover: 0 });
+    out.push((into.get(k) as { c: Candle }).c);
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
 
 export async function probe(url: string): Promise<string> {
   try {

@@ -36,13 +36,14 @@ async function main() {
     ctxs.push(buildCtx(s, raw.get(s) as Candle[], s === "BTCUSDT" ? null : btc, startMs - 3 * DAY, endMs, DEFAULT_SETTINGS));
     console.error(`${s}: ${ctxs[ctxs.length - 1].hours.length} hourly evaluations in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
   }
-  const label = source === "synthetic" ? "SYNTHETIC RANDOM DATA: this only checks that the audit code runs and says NOTHING about the strategies" : source === "bybit" ? "Bybit public spot 5-minute candles (api.bybit.com)" : "Binance public spot 5-minute candles (data-api.binance.vision), a proxy for Bybit";
+  const label = source === "synthetic" ? "SYNTHETIC RANDOM DATA: this only checks that the audit code runs and says NOTHING about the strategies" : source === "bybit-trades" ? "REAL Bybit spot data: 5-minute candles built from Bybit's own public trade files (public.bybit.com)" : source === "bybit" ? "Bybit public spot 5-minute candles (api.bybit.com)" : "Binance public spot 5-minute candles (data-api.binance.vision), a proxy for Bybit";
   const L: string[] = [`# Signal-engine audit (read-only)`, `Data: ${label}`, `Replay window ${new Date(startMs).toISOString().slice(0, 10)} → ${new Date(endMs).toISOString().slice(0, 10)}; in-sample ends ${new Date(P.splitMs).toISOString().slice(0, 10)}. Coins: ${symbols.join(", ")}. Decisions use the live monitor's 200-candle windows. Nothing here was tuned; it is a diagnosis.`, ""];
   L.push("## 1. Trend BUY", "", ...trendSection(ctxs, P), "");
   L.push("## 2. Support-Bounce", "", ...bounceSection(ctxs, P), "");
   L.push("## 3. Exit warning", "", ...exitSection(ctxs, P), "");
   L.push("## 4. Data source", "");
   if (source === "synthetic") L.push("Skipped in synthetic mode.");
+  else if (source === "bybit-trades") L.push("The source comparison is in the Binance-source report. This report IS the Bybit data.");
   else { const d = await dataSection(P, symbols, source, raw); L.push(...d.lines); }
   L.push("", "## 5. Back-test quality", "", ...qualitySection(ctxs, P, btc, raw));
   mkdirSync(out, { recursive: true });
