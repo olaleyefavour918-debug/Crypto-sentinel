@@ -30,10 +30,20 @@ jobs:
         id: compare
         continue-on-error: true
         run: mkdir -p audit-out && npx tsx --tsconfig tests/tsconfig.json scripts/audit/compare-sources.ts --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" | tee audit-out/compare-sources.md
+      - name: Post-fix audit on REAL Bybit spot data (differential vs the pre-fix audit)
+        id: bybit
+        continue-on-error: true
+        run: mkdir -p audit-out && npx tsx --tsconfig tests/tsconfig.json scripts/audit/run.ts --source bybit-trades --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --out audit-out
+      - name: Faithful back-test section (synthetic code check only)
+        id: bt
+        continue-on-error: true
+        run: npx tsx --tsconfig tests/tsconfig.json scripts/backtest-setups.ts --synthetic --days 60 --symbols BTCUSDT,ETHUSDT --out audit-out/bt-synthetic | tail -20
       - name: Outcome
         if: always()
         run: |
           echo "compare step: ${{ steps.compare.outcome }}"
+          echo "post-fix bybit audit: ${{ steps.bybit.outcome }}"
+          echo "back-test script: ${{ steps.bt.outcome }}"
           
           ls -la audit-out || true
       - uses: actions/upload-artifact@v4

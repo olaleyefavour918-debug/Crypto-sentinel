@@ -5,7 +5,10 @@
  * Real mode downloads public 5-minute klines (no API key, no account, read-only).
  */
 import { mkdirSync, writeFileSync } from "node:fs";
+import { buildCtx, simulateLive, type LiveOpts, type LiveTrade } from "@/lib/live-replay";
+import { DEFAULT_SETTINGS } from "@/lib/settings";
 import { buildReport, formatReport, M5, replay, rng, type CoinData } from "@/lib/setups-backtest";
+import { DayAcc, dayBoot, fmtBoot } from "./audit/stats";
 import type { Candle } from "@/lib/types";
 
 const arg = (k: string, d: string) => { const i = process.argv.indexOf(`--${k}`); return i >= 0 ? process.argv[i + 1] : d; };
@@ -99,6 +102,34 @@ function synthetic(seed: number, fromMs: number, toMs: number): Candle[] {
   return res;
 }
 
+/**
+ * The existing Trend BUY / SELL system replayed through the REAL live functions (evaluateBuy, evaluateExit, arming,
+ * 30-minute entry window, 200-candle windows, trend-break exit, the paper engine's fee arithmetic). The simulation above
+ * uses a simplified exit model and different costs, so THIS section is the faithful one for the Trend system.
+ */
+function liveReplaySection(coins: CoinData[], btc: Candle[] | null, startMs: number, endMs: number): string {
+  const DAY = 86_400_000;
+  const split = startMs + 0.6 * (endMs - startMs);
+  const base: LiveOpts = { trendExit: true, feePct: 0.1, slipPct: 0, startMs, endMs, maxHoldH: 14 * 24, stopPct: DEFAULT_SETTINGS.stopLossPct, takePct: DEFAULT_SETTINGS.takeProfitPct };
+  const L: string[] = ["## Trend BUY/SELL — faithful live replay (the existing system, unchanged rules)", ""];
+  for (const [label, slip] of [["fees only, as the paper engine charges", 0], ["fees + 0.05% slippage per side (stress)", 0.05]] as const) {
+    const all: LiveTrade[] = [];
+    for (const c of coins) {
+      const ctx = buildCtx(c.symbol, c.c5, c.symbol === "BTCUSDT" ? null : btc, startMs - 3 * DAY, endMs, DEFAULT_SETTINGS);
+      all.push(...simulateLive(ctx, { ...base, slipPct: slip }));
+    }
+    const part = (t: LiveTrade[]) => {
+      if (!t.length) return "n=0";
+      const acc = new DayAcc();
+      for (const x of t) acc.add(Math.floor(x.entryAt / DAY), x.netPct);
+      return `n=${t.length} · win ${((t.filter((x) => x.netPct > 0).length / t.length) * 100).toFixed(0)}% · mean net ${fmtBoot(dayBoot(acc), 2, "%")}`;
+    };
+    L.push(`**${label}**`, `- all: ${part(all)}`, `- in-sample (first 60%): ${part(all.filter((x) => x.entryAt < split))}`, `- out-of-sample (last 40%): ${part(all.filter((x) => x.entryAt >= split))}`, "");
+  }
+  L.push("Intervals resample whole days (coins and hours inside a day move together). A mean whose interval contains 0 is not distinguishable from no edge. This is research output for a paper-trading monitor; it is not a profit claim.");
+  return L.join("\n");
+}
+
 async function main() {
   const endMs = Math.floor(Date.now() / (24 * 3600_000)) * 24 * 3600_000; // up to 00:00 UTC today
   const startMs = endMs - days * 24 * 3600_000;
@@ -126,7 +157,7 @@ async function main() {
     coins.push({ symbol: s, c5, on, off });
   }
   const report = buildReport(coins, { startMs, endMs });
-  const text = formatReport(report, source);
+  const text = formatReport(report, source) + "\n" + liveReplaySection(coins, btc, startMs, endMs);
   mkdirSync(out, { recursive: true });
   writeFileSync(`${out}/report.md`, text);
   writeFileSync(`${out}/report.json`, JSON.stringify(report, null, 1));
