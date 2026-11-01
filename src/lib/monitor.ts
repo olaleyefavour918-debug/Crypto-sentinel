@@ -3,7 +3,8 @@ import { BybitError, fetchKlines, fetchTickers, sanitizeError, type BybitDeps } 
 import { isUniqueViolation, type Db, type Row } from "./db";
 import { buildTradeEmail, processEmailQueue, queueTradeEmail, type EmailDeps } from "./email";
 import { logger } from "./logger";
-import { pushNewSignals, pushNewTrades, type PushDeps } from "./webpush";
+import { pushNewSetups, pushNewSignals, pushNewTrades, type PushDeps } from "./webpush";
+import { processSetups } from "./setups-run";
 import { processDirectional } from "./directional-run";
 import { balanceAfterClose, balanceAfterOpen, computeClose, roundPrice, simulatedQuantity } from "./paper";
 import { ensureSetup } from "./migrations";
@@ -161,12 +162,15 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
     }
   });
 
+  const btcIdx = assets.findIndex((a) => a.symbol === "BTCUSDT");
+  const btcH4Closed = btcIdx >= 0 && fetched[btcIdx]?.h4 ? closedCandles(fetched[btcIdx].h4 as Candle[], INTERVAL_MS["240"], clock()) : null;
+
   // 3) Evaluate / trade, one coin at a time (keeps balance updates ordered and deterministic).
   const outcomes: AssetOutcome[] = [];
   for (let i = 0; i < assets.length; i++) {
     const a = assets[i];
     try {
-      outcomes.push(await processAsset(deps, clock, settings, a, fetched[i], tickers, tickerError));
+      outcomes.push(await processAsset(deps, clock, settings, a, fetched[i], tickers, tickerError, btcH4Closed));
     } catch (e) {
       const msg = sanitizeError(e);
       logger.error("monitor.asset_failed", { symbol: a.symbol, error: msg });
@@ -197,6 +201,8 @@ async function doRun(deps: MonitorDeps, clock: () => number): Promise<MonitorRes
     const pushed = await pushNewTrades(db, { ...deps.push, now: clock });
     if (pushed.trades) actions.push(`Push: ${pushed.sent} device notification(s) sent${pushed.failed ? `, ${pushed.failed} failed` : ""}`);
     const pushedSignals = await pushNewSignals(db, { ...deps.push, now: clock });
+    const pushedSetups = await pushNewSetups(db, { ...deps.push, now: clock });
+    if (pushedSetups.events) actions.push(`Push (setups): ${pushedSetups.sent} device notification(s) sent${pushedSetups.failed ? `, ${pushedSetups.failed} failed` : ""}`);
     if (pushedSignals.signals) actions.push(`Push (LONG/SHORT): ${pushedSignals.sent} device notification(s) sent${pushedSignals.failed ? `, ${pushedSignals.failed} failed` : ""}`);
   } catch (e) {
     logger.warn("monitor.push_failed", { error: sanitizeError(e) });
@@ -227,6 +233,7 @@ async function processAsset(
   data: AssetFetch,
   tickers: Map<string, import("./types").Ticker24h | BybitError> | null,
   tickerError: string | null,
+  btcH4Closed: Candle[] | null = null,
 ): Promise<AssetOutcome> {
   const { db } = deps;
   const { symbol } = asset;
@@ -334,6 +341,15 @@ async function processAsset(
     } catch (e) {
       logger.warn("monitor.directional_failed", { symbol, error: sanitizeError(e) });
       actions.push(`${base}: LONG/SHORT analysis could not run this time (BUY/SELL unaffected)`);
+    }
+  }
+
+  // ── Setup engine (Trend early read, Support-Bounce, Exit warning): separate, opens no paper trade, can never break anything above ──
+  if (klinesOk) {
+    try {
+      actions.push(...(await processSetups(db, { symbol, enabled: asset.enabled, settings, h1All: data.h1 as Candle[], h4All: data.h4 as Candle[], price: ticker?.lastPrice ?? null, nowMs, btcH4Closed })));
+    } catch (e) {
+      logger.warn("monitor.setups_failed", { symbol, error: sanitizeError(e) });
     }
   }
 

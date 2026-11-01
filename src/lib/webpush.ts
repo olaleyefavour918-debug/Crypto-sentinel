@@ -2,6 +2,8 @@ import { createECDH, createCipheriv, createPrivateKey, generateKeyPairSync, hkdf
 import type { Db, Queryable, Row } from "./db";
 import { logger } from "./logger";
 import { baseOf, fmtPrice, pairLabel } from "./format";
+import { setupPushPayload } from "./setups-alerts";
+import type { StrategyId } from "./setups";
 import { getKv } from "./store";
 
 /**
@@ -210,3 +212,29 @@ export async function pushNewSignals(db: Db, deps: PushDeps = {}): Promise<{ sig
   return { signals: claimed.rows.length, sent, failed };
 }
 
+/** Phone alerts for setups (EARLY unconfirmed and CONFIRMED). Claimed atomically from the outbox, never older than an hour. */
+export async function pushNewSetups(db: Db, deps: PushDeps = {}): Promise<{ events: number; sent: number; failed: number }> {
+  const now = (deps.now ?? Date.now)();
+  const cutoff = new Date(now - PUSH_MAX_AGE_MS).toISOString();
+  const claimed = await db.query<Row>(
+    `update setup_events e set push_sent_at = now()
+       from setups s
+      where e.setup_id = s.id and e.id in (select id from setup_events where notify and push_sent_at is null and created_at >= $1::timestamptz order by id limit 20)
+        and e.push_sent_at is null
+      returning e.kind, e.at, e.price, s.symbol, s.strategy, s.last_price`,
+    [cutoff],
+  );
+  await db.query("update setup_events set push_sent_at = now() where notify and push_sent_at is null and created_at < $1::timestamptz", [cutoff]);
+  let sent = 0, failed = 0;
+  for (const r of claimed.rows) {
+    const payload = setupPushPayload({
+      symbol: String(r.symbol), strategy: r.strategy as StrategyId, kind: r.kind as "POTENTIAL" | "CONFIRMED",
+      signalPrice: r.price === null ? null : Number(r.price), latestPrice: r.last_price === null ? null : Number(r.last_price),
+      at: new Date(r.at as string).getTime(), now,
+    });
+    const out = await pushToAll(db, payload, deps);
+    sent += out.sent;
+    failed += out.failed;
+  }
+  return { events: claimed.rows.length, sent, failed };
+}

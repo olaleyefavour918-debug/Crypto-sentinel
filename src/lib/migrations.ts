@@ -274,6 +274,64 @@ alter table email_notifications add constraint email_notifications_kind_check ch
     // A SELL should also fire when the trend breaks, not only at the fixed stop/target. Turned on once; it can be switched off in Settings.
     sql: `update app_settings set settings = jsonb_set(settings, '{trendExitEnabled}', 'true'::jsonb) where id = 1;`,
   },
+  {
+    // (006 was used by a feature that was removed again; its table may exist in older databases and is simply ignored.)
+    id: "007_setups",
+    sql: `
+-- Setup engine: Trend-BUY early reads, Support-Bounce and Exit-warning. Separate from paper trades and from LONG/SHORT.
+-- It never opens or closes a paper position and never places an order.
+create table if not exists setups (
+  id bigserial primary key,
+  symbol text not null,
+  strategy text not null check (strategy in ('TREND_BUY','BOUNCE','EXIT_WARNING')),
+  status text not null check (status in ('WATCH','POTENTIAL','CONFIRMED','EXPIRED')),
+  first_seen_at timestamptz not null,
+  status_since timestamptz not null,
+  signal_candle_start timestamptz,
+  signal_price numeric(20,8),
+  signal_price_at timestamptz,
+  confirm_candle_close numeric(20,8),
+  potential_scans int not null default 0,
+  repaints int not null default 0,
+  converted boolean not null default false,
+  expire_reason text,
+  expired_at timestamptz,
+  levels jsonb,
+  variant text,
+  refs jsonb,
+  last_price numeric(20,8),
+  last_scan_at timestamptz not null,
+  conditions jsonb not null default '[]'::jsonb,
+  reasons jsonb not null default '[]'::jsonb,
+  outcome_status text,
+  outcome_net_pct numeric(12,6),
+  outcome_gross_pct numeric(12,6),
+  outcome_r numeric(12,6),
+  outcome_exit_at timestamptz,
+  outcome_ambiguous boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists setups_one_active on setups (symbol, strategy) where status <> 'EXPIRED';
+create index if not exists setups_symbol_strategy_idx on setups (symbol, strategy, id desc);
+
+create table if not exists setup_events (
+  id bigserial primary key,
+  setup_id bigint not null references setups(id) on delete cascade,
+  kind text not null,
+  at timestamptz not null,
+  price numeric(20,8),
+  note text not null,
+  notify boolean not null default false,
+  push_sent_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists setup_events_outbox_idx on setup_events (id) where notify and push_sent_at is null;
+create index if not exists setup_events_kind_idx on setup_events (kind, created_at desc);
+
+alter table email_notifications drop constraint if exists email_notifications_kind_check;
+alter table email_notifications add constraint email_notifications_kind_check check (kind in ('BUY','SELL','TEST','LONG','SHORT','EARLY','SETUP'));
+`,
+  },
 ];
 
 const setupMemo = new WeakMap<object, Promise<void>>();

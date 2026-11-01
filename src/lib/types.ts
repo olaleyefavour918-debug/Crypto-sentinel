@@ -55,6 +55,14 @@ export interface Settings {
   /** LONG/SHORT analysis (separate from BUY/SELL). */
   directionalEnabled: boolean;
   directionalEmailEnabled: boolean;
+  /** Support-Bounce / Exit-warning / early-read engine: record setups and show them on the dashboard. */
+  setupsEnabled: boolean;
+  /** Send alerts for the engine. OFF = shadow mode (recorded and shown, never notified). */
+  setupAlertsEnabled: boolean;
+  /** Early (POTENTIAL, unconfirmed) alerts go to phone push only. */
+  setupEarlyPushEnabled: boolean;
+  /** CONFIRMED alerts also go by email. */
+  setupConfirmedEmailEnabled: boolean;
   /** Assumed slippage per side, in percent, used only for the LONG/SHORT cost estimates. */
   slippagePct: number;
   /** Minimum estimated reward/risk (before costs) a LONG/SHORT setup needs; weaker setups stay NEUTRAL. */

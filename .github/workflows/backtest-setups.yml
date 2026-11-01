@@ -1,0 +1,42 @@
+# Manual only. Downloads public market candles (read-only, no keys) and back-tests the setup strategies on paper.
+# It places no orders, touches no database and sends no email. Results appear in the run summary and as a downloadable artifact.
+name: backtest-setups
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Days of history to replay (after a 40-day warm-up)"
+        default: "150"
+      symbols:
+        description: "Comma-separated USDT pairs (BTCUSDT must be included for the market guard)"
+        default: "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT,DOGEUSDT,ADAUSDT,LINKUSDT"
+      source:
+        description: "auto, binance or bybit"
+        default: "auto"
+permissions:
+  contents: read
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Unit tests for the back-test engine
+        run: npx tsx --tsconfig tests/tsconfig.json --test tests/setups-backtest.test.ts tests/setups.test.ts tests/lifecycle.test.ts
+      - name: Run back-test
+        run: npx tsx --tsconfig tests/tsconfig.json scripts/backtest-setups.ts --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --source "${{ inputs.source }}" --out backtest-out
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f backtest-out/report.md ]; then cat backtest-out/report.md >> "$GITHUB_STEP_SUMMARY"; else echo "No report was produced (see the log of the previous step)." >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backtest-setups
+          path: backtest-out
+          if-no-files-found: ignore

@@ -10,6 +10,7 @@ import EmailPanel from "./EmailPanel";
 import PushPanel from "./PushPanel";
 import AssistantPanel from "./AssistantPanel";
 import DirectionalPanel from "./DirectionalPanel";
+import SetupsPanel from "./SetupsPanel";
 import PerformancePanel from "./PerformancePanel";
 import Health from "./Health";
 import Login from "./Login";
@@ -216,6 +217,7 @@ export default function Dashboard() {
         {sel && <Signal symbol={sel.symbol} evaluation={ev} lastSignal={last} settings={state.settings} />}
 
         <DirectionalPanel assessments={state.directional?.assessments ?? []} signals={state.directional?.signals ?? []} assets={state.assets} now={state.now} enabled={state.settings.directionalEnabled !== false} />
+        <SetupsPanel data={state.setups} settings={state.settings} now={state.now} />
         <AssistantPanel selected={selected} />
 
         <Portfolio account={state.account} positions={state.positions} assets={state.assets} stats={state.stats} now={state.now} feeRatePct={state.settings.feeRatePct} />

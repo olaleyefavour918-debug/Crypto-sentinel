@@ -14,6 +14,7 @@ export interface AppState {
   stats: TradeStats;
   /** LONG/SHORT/NEUTRAL analysis (optional so older cached responses still render). */
   directional?: DirectionalSummary;
+  setups?: import("@/lib/setups-run").SetupsSummary;
   trades: TradeEvent[];
   notifications: NotificationRow[];
   evaluations: EvaluationRow[];

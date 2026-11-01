@@ -1,6 +1,7 @@
 import { json, requireAdmin } from "@/lib/auth";
 import { internalError, withDb } from "@/lib/api";
 import { directionalSummary } from "@/lib/directional-run";
+import { setupsSummary } from "@/lib/setups-run";
 import { emailConfig } from "@/lib/email";
 import { assessMonitor, configStatus } from "@/lib/health";
 import {
@@ -27,9 +28,9 @@ export async function GET(req: Request) {
     const db = got.db;
     const now = Date.now();
     const settings = await loadSettings(db);
-    const [account, assets, positions, trades, notifications, evaluations, signals, jobRuns, marketApi, stats, directional] = await Promise.all([
+    const [account, assets, positions, trades, notifications, evaluations, signals, jobRuns, marketApi, stats, directional, setups] = await Promise.all([
       getAccount(db), listAssets(db), listOpenPositions(db), listTrades(db, 100), listNotifications(db, 15), latestEvaluations(db),
-      lastSignals(db), recentJobRuns(db, 30), getKv(db, "market_api"), tradeStats(db), directionalSummary(db),
+      lastSignals(db), recentJobRuns(db, 30), getKv(db, "market_api"), tradeStats(db), directionalSummary(db), setupsSummary(db, Date.now()),
     ]);
     const cfg = emailConfig();
     return json({
@@ -41,6 +42,7 @@ export async function GET(req: Request) {
       positions,
       stats,
       directional,
+      setups,
       trades,
       notifications,
       evaluations,
