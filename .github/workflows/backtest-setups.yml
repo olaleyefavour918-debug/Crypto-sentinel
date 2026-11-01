@@ -26,19 +26,15 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Audit on Binance candles
-        id: binance
+      - name: Compare Binance and real Bybit candles and signals (all coins)
+        id: compare
         continue-on-error: true
-        run: mkdir -p audit-out && npx tsx --tsconfig tests/tsconfig.json scripts/audit/run.ts --source binance --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --out audit-out
-      - name: Audit on REAL Bybit spot data (built from public trade files)
-        id: bybit
-        continue-on-error: true
-        run: npx tsx --tsconfig tests/tsconfig.json scripts/audit/run.ts --source bybit-trades --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --out audit-out
+        run: mkdir -p audit-out && npx tsx --tsconfig tests/tsconfig.json scripts/audit/compare-sources.ts --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" | tee audit-out/compare-sources.md
       - name: Outcome
         if: always()
         run: |
-          echo "binance step: ${{ steps.binance.outcome }}"
-          echo "bybit-trades step: ${{ steps.bybit.outcome }}"
+          echo "compare step: ${{ steps.compare.outcome }}"
+          
           ls -la audit-out || true
       - uses: actions/upload-artifact@v4
         if: always()
