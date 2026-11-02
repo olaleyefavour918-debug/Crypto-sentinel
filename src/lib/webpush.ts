@@ -130,8 +130,9 @@ export async function pushToAll(db: Db, payload: PushPayload, deps: PushDeps = {
   const keys = await getVapid(db);
   let sent = 0, failed = 0, removed = 0;
   const errors: string[] = [];
-  for (const s of subs) {
-    const r = await sendPush(keys, s, payload, deps);
+  // Devices are contacted in parallel: one slow or dead push endpoint must not delay everyone else's alert.
+  const results = await Promise.all(subs.map(async (s) => ({ s, r: await sendPush(keys, s, payload, deps) })));
+  for (const { s, r } of results) {
     if (r.ok) {
       sent++;
       await db.query("update push_subscriptions set last_success_at = now(), last_error = null, failures = 0 where id = $1", [s.id]);
@@ -159,6 +160,16 @@ export function tradePushPayload(t: { symbol: string; type: string; price: numbe
 const PUSH_MAX_AGE_MS = 60 * 60_000;
 
 /**
+ * An alert is claimed (push_sent_at set) BEFORE sending so overlapping runs never send it twice. If the send then reached
+ * NO device because of a transient failure, the claim is released so the next run retries it, until the one-hour freshness
+ * limit makes it too old to be useful. A send that reached at least one device is never retried (no duplicates), and
+ * "no subscribed devices" is not a failure (nothing to retry).
+ */
+async function releaseIfUndelivered(db: Db, table: "paper_trades" | "directional_signals" | "setup_events", id: unknown, out: { sent: number; failed: number }): Promise<void> {
+  if (out.sent === 0 && out.failed > 0) await db.query(`update ${table} set push_sent_at = null where id = $1`, [id]);
+}
+
+/**
  * Pushes trade events that have not been pushed yet. Each trade is claimed atomically, so a trade is pushed at most
  * once even if monitor runs overlap. Trades older than an hour are never pushed (a stale alert is misleading).
  */
@@ -169,7 +180,7 @@ export async function pushNewTrades(db: Db, deps: PushDeps = {}): Promise<{ trad
     `update paper_trades set push_sent_at = now()
        where id in (select id from paper_trades where push_sent_at is null and occurred_at >= $1::timestamptz order by id limit 20)
          and push_sent_at is null
-       returning symbol, event_type, price, net_pnl`,
+       returning id, symbol, event_type, price, net_pnl`,
     [cutoff],
   );
   await db.query("update paper_trades set push_sent_at = now() where push_sent_at is null and occurred_at < $1::timestamptz", [cutoff]);
@@ -178,6 +189,7 @@ export async function pushNewTrades(db: Db, deps: PushDeps = {}): Promise<{ trad
     const out = await pushToAll(db, tradePushPayload({ symbol: String(r.symbol), type: String(r.event_type), price: Number(r.price), netPnl: r.net_pnl === null ? null : Number(r.net_pnl) }), deps);
     sent += out.sent;
     failed += out.failed;
+    await releaseIfUndelivered(db, "paper_trades", r.id, out);
     if (out.failed) logger.warn("push.failed", { errors: out.errors });
   }
   return { trades: claimed.rows.length, sent, failed };
@@ -192,7 +204,7 @@ export async function pushNewSignals(db: Db, deps: PushDeps = {}): Promise<{ sig
     `update directional_signals set push_sent_at = now()
        where id in (select id from directional_signals where push_sent_at is null and created_at >= $1::timestamptz order by id limit 20)
          and push_sent_at is null
-       returning symbol, direction, price_ref, stop, take_profit, risk_reward`,
+       returning id, symbol, direction, price_ref, stop, take_profit, risk_reward`,
     [cutoff],
   );
   await db.query("update directional_signals set push_sent_at = now() where push_sent_at is null and created_at < $1::timestamptz", [cutoff]);
@@ -208,6 +220,7 @@ export async function pushNewSignals(db: Db, deps: PushDeps = {}): Promise<{ sig
     const out = await pushToAll(db, payload, deps);
     sent += out.sent;
     failed += out.failed;
+    await releaseIfUndelivered(db, "directional_signals", r.id, out);
   }
   return { signals: claimed.rows.length, sent, failed };
 }
@@ -221,7 +234,7 @@ export async function pushNewSetups(db: Db, deps: PushDeps = {}): Promise<{ even
        from setups s
       where e.setup_id = s.id and e.id in (select id from setup_events where notify and push_sent_at is null and created_at >= $1::timestamptz order by id limit 20)
         and e.push_sent_at is null
-      returning e.kind, e.at, e.price, s.symbol, s.strategy, s.last_price`,
+      returning e.id, e.kind, e.at, e.price, s.symbol, s.strategy, s.last_price`,
     [cutoff],
   );
   await db.query("update setup_events set push_sent_at = now() where notify and push_sent_at is null and created_at < $1::timestamptz", [cutoff]);
@@ -235,6 +248,7 @@ export async function pushNewSetups(db: Db, deps: PushDeps = {}): Promise<{ even
     const out = await pushToAll(db, payload, deps);
     sent += out.sent;
     failed += out.failed;
+    await releaseIfUndelivered(db, "setup_events", r.id, out);
   }
   return { events: claimed.rows.length, sent, failed };
 }
