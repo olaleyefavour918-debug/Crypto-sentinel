@@ -1,5 +1,5 @@
-# AUDIT BRANCH VERSION (not on main). Read-only diagnosis of the signal engine on real market data.
-# Places no orders, touches no database, sends no email.
+# Manual only. Downloads public market candles (read-only, no keys) and back-tests the setup strategies on paper.
+# It places no orders, touches no database and sends no email. Results appear in the run summary and as a downloadable artifact.
 name: backtest-setups
 on:
   workflow_dispatch:
@@ -8,17 +8,17 @@ on:
         description: "Days of history to replay (after a 40-day warm-up)"
         default: "150"
       symbols:
-        description: "Comma-separated USDT pairs (BTCUSDT must be included)"
+        description: "Comma-separated USDT pairs (BTCUSDT must be included for the market guard)"
         default: "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT,DOGEUSDT,ADAUSDT,LINKUSDT"
       source:
-        description: "unused on this branch (audit runs Binance and Bybit)"
+        description: "auto, binance or bybit"
         default: "auto"
 permissions:
   contents: read
 jobs:
-  audit:
+  backtest:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,29 +26,17 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Compare Binance and real Bybit candles and signals (all coins)
-        id: compare
-        continue-on-error: true
-        run: mkdir -p audit-out && npx tsx --tsconfig tests/tsconfig.json scripts/audit/compare-sources.ts --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" | tee audit-out/compare-sources.md
-      - name: Post-fix audit on REAL Bybit spot data (differential vs the pre-fix audit)
-        id: bybit
-        continue-on-error: true
-        run: mkdir -p audit-out && npx tsx --tsconfig tests/tsconfig.json scripts/audit/run.ts --source bybit-trades --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --out audit-out
-      - name: Faithful back-test section (synthetic code check only)
-        id: bt
-        continue-on-error: true
-        run: npx tsx --tsconfig tests/tsconfig.json scripts/backtest-setups.ts --synthetic --days 60 --symbols BTCUSDT,ETHUSDT --out audit-out/bt-synthetic | tail -20
-      - name: Outcome
+      - name: Unit tests for the back-test engine
+        run: npx tsx --tsconfig tests/tsconfig.json --test tests/setups-backtest.test.ts tests/setups.test.ts tests/lifecycle.test.ts
+      - name: Run back-test
+        run: npx tsx --tsconfig tests/tsconfig.json scripts/backtest-setups.ts --days "${{ inputs.days }}" --symbols "${{ inputs.symbols }}" --source "${{ inputs.source }}" --out backtest-out
+      - name: Publish summary
         if: always()
         run: |
-          echo "compare step: ${{ steps.compare.outcome }}"
-          echo "post-fix bybit audit: ${{ steps.bybit.outcome }}"
-          echo "back-test script: ${{ steps.bt.outcome }}"
-          
-          ls -la audit-out || true
+          if [ -f backtest-out/report.md ]; then cat backtest-out/report.md >> "$GITHUB_STEP_SUMMARY"; else echo "No report was produced (see the log of the previous step)." >> "$GITHUB_STEP_SUMMARY"; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: signal-audit
-          path: audit-out
+          name: backtest-setups
+          path: backtest-out
           if-no-files-found: ignore
