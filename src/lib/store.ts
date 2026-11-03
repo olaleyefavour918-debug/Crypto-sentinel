@@ -1,3 +1,4 @@
+import { parseRef } from "./priceaudit";
 import type { Queryable, Row } from "./db";
 import { normalizeStoredSettings } from "./settings";
 import { toMs } from "./time";
@@ -109,6 +110,11 @@ export interface TradeEvent {
   netPnl: number | null;
   notificationStatus: string | null;
   notificationError: string | null;
+  /** Price snapshot at the scan that produced this trade (null for trades created before price auditing existed). */
+  ref?: import("./priceaudit").PriceRef | null;
+  /** When the phone alert was handed to the push sender and how long after the trade was created (null = not pushed). */
+  alertSentAt: number | null;
+  alertDelayMs: number | null;
 }
 
 export async function listTrades(q: Queryable, limit = 100): Promise<TradeEvent[]> {
@@ -136,6 +142,9 @@ export async function listTrades(q: Queryable, limit = 100): Promise<TradeEvent[
     netPnl: n(x.net_pnl),
     notificationStatus: x.notif_status ?? null,
     notificationError: x.notif_error ?? null,
+    ref: parseRef(x.ref),
+    alertSentAt: toMs(x.push_sent_at),
+    alertDelayMs: toMs(x.push_sent_at) !== null ? Math.max(0, (toMs(x.push_sent_at) as number) - (toMs(x.occurred_at) as number)) : null,
   }));
 }
 
@@ -214,11 +223,13 @@ export interface JobRunRow {
   triggerSource: string;
   durationMs: number | null;
   message: string | null;
+  /** Where the time of this run went (milliseconds), when recorded. */
+  timings: { tickersMs: number; klinesMs: number; evaluateMs: number; emailMs: number; pushMs: number; totalMs: number } | null;
 }
 
 export async function recentJobRuns(q: Queryable, limit = 15): Promise<JobRunRow[]> {
   const r = await q.query<Row>(
-    "select id, started_at, finished_at, status, trigger_source, duration_ms, message from job_runs order by started_at desc, id desc limit $1",
+    "select id, started_at, finished_at, status, trigger_source, duration_ms, message, details->'timings' as timings from job_runs order by started_at desc, id desc limit $1",
     [limit],
   );
   return r.rows.map((x) => ({
@@ -229,7 +240,42 @@ export async function recentJobRuns(q: Queryable, limit = 15): Promise<JobRunRow
     triggerSource: x.trigger_source,
     durationMs: n(x.duration_ms),
     message: x.message ?? null,
+    timings: parseTimings(x.timings),
   }));
+}
+
+function parseTimings(v: unknown): JobRunRow["timings"] {
+  let o = v;
+  if (typeof o === "string") { try { o = JSON.parse(o); } catch { return null; } }
+  if (typeof o !== "object" || o === null) return null;
+  const t = o as Record<string, unknown>;
+  const keys = ["tickersMs", "klinesMs", "evaluateMs", "emailMs", "pushMs", "totalMs"] as const;
+  if (!keys.every((k) => typeof t[k] === "number" && Number.isFinite(t[k] as number))) return null;
+  return Object.fromEntries(keys.map((k) => [k, t[k] as number])) as NonNullable<JobRunRow["timings"]>;
+}
+
+export interface DelayStat { n: number; medianMs: number | null; maxMs: number | null }
+export interface DeliveryStats {
+  /** Detection -> handed to the phone-push sender (claimed). This is NOT proof that the phone received it. */
+  push: DelayStat;
+  /** Email created -> accepted by the mail provider. Acceptance is not the same as delivery to an inbox. */
+  email: DelayStat;
+  windowDays: number;
+}
+
+export async function deliveryStats(q: Queryable, days = 7): Promise<DeliveryStats> {
+  const stat = async (sql: string): Promise<DelayStat> => {
+    const r = await q.query<Row>(sql, [days]);
+    const x = r.rows[0] ?? {};
+    return { n: Number(x.n ?? 0), medianMs: n(x.med), maxMs: n(x.mx) };
+  };
+  const push = await stat(`select count(*)::int as n, percentile_cont(0.5) within group (order by d) as med, max(d) as mx from (
+      select extract(epoch from (push_sent_at - occurred_at)) * 1000 as d from paper_trades where push_sent_at is not null and occurred_at > now() - ($1::int * interval '1 day')
+      union all
+      select extract(epoch from (push_sent_at - created_at)) * 1000 from setup_events where notify and push_sent_at is not null and created_at > now() - ($1::int * interval '1 day')) x`);
+  const email = await stat(`select count(*)::int as n, percentile_cont(0.5) within group (order by d) as med, max(d) as mx from (
+      select extract(epoch from (accepted_at - created_at)) * 1000 as d from email_notifications where accepted_at is not null and created_at > now() - ($1::int * interval '1 day')) x`);
+  return { push, email, windowDays: days };
 }
 
 export async function getKv<T = unknown>(q: Queryable, key: string): Promise<T | null> {

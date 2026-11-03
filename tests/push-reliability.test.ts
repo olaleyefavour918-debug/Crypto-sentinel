@@ -55,7 +55,7 @@ describe("partial delivery and age limit", () => {
     assert.equal(urls.length, n, "nothing re-sent");
   });
 
-  it("alerts that keep failing stop being retried after the one-hour freshness limit", async () => {
+  it("alerts that keep failing stop being retried after the fifteen-minute freshness limit", async () => {
     // new trades would be needed; instead re-release one old trade and make everything fail
     mode = "fail";
     await h.t.db.query("update paper_trades set push_sent_at = null where id = (select min(id) from paper_trades)");

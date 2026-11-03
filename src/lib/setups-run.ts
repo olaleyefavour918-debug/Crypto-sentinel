@@ -1,3 +1,4 @@
+import { buildPriceRef, parseRef, type PriceRef } from "./priceaudit";
 import type { Db, Queryable, Row } from "./db";
 import { computeStats, resolveSignal, type PerfStats, type ResolvedTrade, type SignalOutcome } from "./directional";
 import { logger } from "./logger";
@@ -57,6 +58,8 @@ export interface SetupsInput {
   h4All: Candle[];
   /** Live price from the ticker, if it is fresh. */
   price: number | null;
+  /** The full fresh ticker (index price, bid/ask, exchange time) for the price audit. Optional. */
+  ticker?: import("./types").Ticker24h | null;
   nowMs: number;
   /** BTC 4H closed candles for the market-wide guard. */
   btcH4Closed?: Candle[] | null;
@@ -117,6 +120,12 @@ export async function processSetups(db: Db, input: SetupsInput): Promise<string[
     const latest = (await db.query<Row>("select * from setups where symbol = $1 and strategy = $2 order by id desc limit 1", [symbol, strategy])).rows[0] ?? null;
     const prev = latest ? rowToState(latest) : null;
     const price = input.price ?? preview?.price ?? closed.price;
+    // Price audit: remember WHICH price this is. The live ticker is the reference; the two candle prices are labelled fallbacks.
+    const fallbackPrice = preview?.price ?? closed.price;
+    const ref: PriceRef | null = input.price !== null
+      ? { source: "ticker_last", last: input.price, indexPrice: input.ticker?.indexPrice ?? null, bid: input.ticker?.bid ?? null, ask: input.ticker?.ask ?? null, exchangeTime: input.ticker?.serverTime ?? null, scanAt: nowMs }
+      : buildPriceRef({ ticker: null, fallbackPrice, fallbackSource: preview?.price != null ? "forming_candle" : "last_closed_candle", scanAt: nowMs });
+    const refJson = ref ? JSON.stringify(ref) : null;
     const res = step(prev, symbol, strategy, { now: nowMs, price, closed, preview });
 
     if (res.state) {
@@ -133,9 +142,9 @@ export async function processSetups(db: Db, input: SetupsInput): Promise<string[
         for (const ev of res.events) {
           const kind = ev.kind === "POTENTIAL" || ev.kind === "CONFIRMED" ? ev.kind : null;
           const notify = kind !== null && (await shouldNotify(q, settings, symbol, strategy, kind));
-          await q.query("insert into setup_events (setup_id, kind, at, price, note, notify) values ($1, $2, $3::timestamptz, $4, $5, $6)", [id, ev.kind, ts(ev.at), ev.price, ev.note, notify]);
+          await q.query("insert into setup_events (setup_id, kind, at, price, note, notify, ref) values ($1, $2, $3::timestamptz, $4, $5, $6, $7::jsonb)", [id, ev.kind, ts(ev.at), ev.price, ev.note, notify, refJson]);
           if (kind === "CONFIRMED" && notify && settings.setupConfirmedEmailEnabled) {
-            const msg = buildSetupEmail({ symbol, strategy, kind, state: res.state as SetupState, now: nowMs, latestPrice: price });
+            const msg = buildSetupEmail({ symbol, strategy, kind, state: res.state as SetupState, now: nowMs, latestPrice: price, ref });
             await q.query(
               `insert into email_notifications (dedupe_key, kind, recipient, subject, text_body, html_body, status)
                values ($1, 'SETUP', $2, $3, $4, $5, 'queued') on conflict (dedupe_key) do nothing`,
@@ -144,6 +153,11 @@ export async function processSetups(db: Db, input: SetupsInput): Promise<string[
           }
           const line = describe(base, strategy, ev, settings.setupAlertsEnabled && notify);
           if (line) actions.push(line);
+        }
+        if (refJson) {
+          // last_ref follows every scan; signal_ref is written ONLY when a POTENTIAL/CONFIRMED event happens, so the price at the signal is kept.
+          const sets = res.events.some((e) => e.kind === "POTENTIAL" || e.kind === "CONFIRMED");
+          await q.query(`update setups set last_ref = $2::jsonb${sets ? ", signal_ref = $2::jsonb" : ""} where id = $1`, [id, refJson]);
         }
       });
     } else if (prev && prev.status !== "EXPIRED") {
@@ -203,6 +217,16 @@ export interface SetupView extends SetupState {
   id: number;
   outcomeStatus: string | null;
   outcomeNetPct: number | null;
+  /** Price snapshot at the scan that raised the CURRENT status (immutable until the status changes). */
+  signalRef: PriceRef | null;
+  /** Price snapshot of the most recent scan (updated every scan). */
+  lastRef: PriceRef | null;
+  /** The earlier POTENTIAL (early read) snapshot, kept when the setup later became CONFIRMED. */
+  earlyRef: PriceRef | null;
+  earlyAt: number | null;
+  /** When the alert for the current status was handed to the phone-push sender, and how long after detection (null = no alert). */
+  alertSentAt: number | null;
+  alertDelayMs: number | null;
 }
 
 export interface SetupsSummary {
@@ -216,9 +240,21 @@ export interface SetupsSummary {
 
 export async function setupsSummary(q: Queryable, nowMs: number): Promise<SetupsSummary> {
   const rows = await q.query<Row>(
-    `select * from setups where status <> 'EXPIRED' or expired_at > now() - interval '24 hours' order by (status = 'EXPIRED'), last_scan_at desc, id desc limit 120`,
+    `select s.*,
+       (select e.ref from setup_events e where e.setup_id = s.id and e.kind = 'POTENTIAL' order by e.id limit 1) as early_ref,
+       (select e.at from setup_events e where e.setup_id = s.id and e.kind = 'POTENTIAL' order by e.id limit 1) as early_at,
+       (select e.push_sent_at from setup_events e where e.setup_id = s.id and e.kind = s.status and e.notify order by e.id desc limit 1) as alert_sent_at,
+       (select e.created_at from setup_events e where e.setup_id = s.id and e.kind = s.status and e.notify order by e.id desc limit 1) as alert_created_at
+       from setups s where s.status <> 'EXPIRED' or s.expired_at > now() - interval '24 hours' order by (s.status = 'EXPIRED'), s.last_scan_at desc, s.id desc limit 120`,
   );
-  const setups: SetupView[] = rows.rows.map((r) => ({ ...rowToState(r), id: Number(r.id), outcomeStatus: (r.outcome_status as string | null) ?? null, outcomeNetPct: numOrNull(r.outcome_net_pct) }));
+  const setups: SetupView[] = rows.rows.map((r) => {
+    const sentAt = toMs(r.alert_sent_at), createdAt = toMs(r.alert_created_at);
+    return {
+      ...rowToState(r), id: Number(r.id), outcomeStatus: (r.outcome_status as string | null) ?? null, outcomeNetPct: numOrNull(r.outcome_net_pct),
+      signalRef: parseRef(r.signal_ref), lastRef: parseRef(r.last_ref), earlyRef: parseRef(r.early_ref), earlyAt: toMs(r.early_at),
+      alertSentAt: sentAt, alertDelayMs: sentAt !== null && createdAt !== null ? Math.max(0, sentAt - createdAt) : null,
+    };
+  });
   const tr = await q.query<Row>("select symbol, outcome_status, outcome_exit_at, outcome_net_pct, outcome_gross_pct, outcome_r, outcome_ambiguous from setups where strategy = 'BOUNCE' and outcome_status in ('tp','sl','expired')");
   const trades: ResolvedTrade[] = tr.rows.map((r) => ({
     symbol: String(r.symbol), direction: "LONG", status: r.outcome_status as ResolvedTrade["status"], exitAt: toMs(r.outcome_exit_at) as number,

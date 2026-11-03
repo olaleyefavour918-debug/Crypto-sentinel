@@ -148,16 +148,17 @@ export async function pushToAll(db: Db, payload: PushPayload, deps: PushDeps = {
   return { sent, failed, removed, errors };
 }
 
-export function tradePushPayload(t: { symbol: string; type: string; price: number; netPnl: number | null }): PushPayload {
+export function tradePushPayload(t: { symbol: string; type: string; price: number; netPnl: number | null; at?: number }): PushPayload {
+  const when = t.at === undefined ? "" : ` at ${new Date(t.at).toISOString().slice(11, 19)} UTC`;
   const pair = pairLabel(t.symbol);
   if (t.type === "BUY") {
-    return { title: `BUY signal · ${pair}`, body: `Paper BUY at ${fmtPrice(t.price)} USDT. Review the chart and decide for yourself. No real order was placed.`, tag: `trade-${t.symbol}-BUY`, url: "/" };
+    return { title: `BUY signal · ${pair}`, body: `Paper BUY at ${fmtPrice(t.price)} USDT${when} (Bybit spot last price). Review the chart and decide for yourself. No real order was placed.`, tag: `trade-${t.symbol}-BUY`, url: "/" };
   }
   const pnl = t.netPnl === null ? "" : ` · net ${t.netPnl >= 0 ? "+" : "−"}${Math.abs(t.netPnl).toFixed(2)} USDT`;
-  return { title: `SELL signal · ${pair}`, body: `Paper position in ${baseOf(t.symbol)} closed at ${fmtPrice(t.price)} USDT${pnl}. No real order was placed.`, tag: `trade-${t.symbol}-SELL`, url: "/" };
+  return { title: `SELL signal · ${pair}`, body: `Paper position in ${baseOf(t.symbol)} closed at ${fmtPrice(t.price)} USDT${when}${pnl}. No real order was placed.`, tag: `trade-${t.symbol}-SELL`, url: "/" };
 }
 
-const PUSH_MAX_AGE_MS = 60 * 60_000;
+const PUSH_MAX_AGE_MS = 15 * 60_000; // an older alert is no longer fresh: it is dropped, never delivered as if current
 
 /**
  * An alert is claimed (push_sent_at set) BEFORE sending so overlapping runs never send it twice. If the send then reached
@@ -180,13 +181,13 @@ export async function pushNewTrades(db: Db, deps: PushDeps = {}): Promise<{ trad
     `update paper_trades set push_sent_at = now()
        where id in (select id from paper_trades where push_sent_at is null and occurred_at >= $1::timestamptz order by id limit 20)
          and push_sent_at is null
-       returning id, symbol, event_type, price, net_pnl`,
+       returning id, symbol, event_type, price, net_pnl, occurred_at`,
     [cutoff],
   );
   await db.query("update paper_trades set push_sent_at = now() where push_sent_at is null and occurred_at < $1::timestamptz", [cutoff]);
   let sent = 0, failed = 0;
   for (const r of claimed.rows) {
-    const out = await pushToAll(db, tradePushPayload({ symbol: String(r.symbol), type: String(r.event_type), price: Number(r.price), netPnl: r.net_pnl === null ? null : Number(r.net_pnl) }), deps);
+    const out = await pushToAll(db, tradePushPayload({ symbol: String(r.symbol), type: String(r.event_type), price: Number(r.price), netPnl: r.net_pnl === null ? null : Number(r.net_pnl), at: new Date(r.occurred_at as string).getTime() }), deps);
     sent += out.sent;
     failed += out.failed;
     await releaseIfUndelivered(db, "paper_trades", r.id, out);

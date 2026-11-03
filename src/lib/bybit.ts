@@ -155,8 +155,12 @@ function parseTickerItem(item: Record<string, unknown>, serverTime: number): Tic
   if (![serverTime, last, pct, high, low, vol, turn].every(Number.isFinite) || last <= 0 || high <= 0 || low <= 0 || serverTime <= 0) {
     throw new BybitError("invalid", "Ticker response failed validation.");
   }
+  const opt = (v: unknown): number | null => { const x = num(v); return Number.isFinite(x) && x > 0 ? x : null; };
   return {
     symbol: String(item.symbol),
+    indexPrice: opt(item.usdIndexPrice),
+    bid: opt(item.bid1Price),
+    ask: opt(item.ask1Price),
     lastPrice: last,
     change24hPct: pct * 100,
     high24h: high,

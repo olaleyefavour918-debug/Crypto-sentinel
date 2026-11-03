@@ -1,7 +1,8 @@
-import type { EmailMessage } from "./email";
+import { priceAuditRows, type EmailMessage } from "./email";
 import { fmtPrice, pairLabel } from "./format";
 import { validityText, type SetupState } from "./lifecycle";
 import { STRATEGY_LABEL, type StrategyId } from "./setups";
+import { priceDiff, signalAgeMinutes, type PriceRef } from "./priceaudit";
 import { ageLabel, fmtUtc } from "./time";
 
 /**
@@ -33,6 +34,8 @@ export interface SetupAlert {
   state: SetupState;
   now: number;
   latestPrice: number | null;
+  /** Immutable price snapshot of this signal (source, exchange time, index price, bid/ask). */
+  ref?: PriceRef | null;
 }
 
 export function buildSetupEmail(a: SetupAlert): EmailMessage {
@@ -48,11 +51,13 @@ export function buildSetupEmail(a: SetupAlert): EmailMessage {
     ["Strategy", strat],
     ["Status", label],
     ["Confirmation", confirmationText(a.kind)],
-    ["Timeframe", "1H setup, 4H context (scanned every 5 minutes)"],
+    ["Timeframe", "1H setup, 4H context (the market is rescanned continuously; see the Health panel for the observed rate)"],
     ["Signal time (UTC)", fmtUtc(s.signalPriceAt)],
     ["Signal price", `${fmtPrice(sp)} USDT`],
     ["Latest price", `${fmtPrice(a.latestPrice)} USDT${move === null ? "" : ` (${move >= 0 ? "+" : "−"}${Math.abs(move).toFixed(2)}% since the signal)`}`],
-    ["Signal age", ageLabel(s.signalPriceAt, a.now)],
+    ["Price difference since the signal", (() => { const d = priceDiff(sp, a.latestPrice); return d === null ? "n/a" : `${d.abs >= 0 ? "+" : "−"}${fmtPrice(Math.abs(d.abs))} USDT (${d.pct >= 0 ? "+" : "−"}${Math.abs(d.pct).toFixed(3)}%); the reference price is kept, never replaced`; })()],
+    ["Signal age", `${ageLabel(s.signalPriceAt, a.now)} (${signalAgeMinutes(s.signalPriceAt, a.now) ?? "n/a"} min)`],
+    ...priceAuditRows(a.ref),
     ["Validity", validityText(s, a.now)],
   ];
   if (s.levels) {
@@ -97,6 +102,6 @@ export function setupPushPayload(a: { symbol: string; strategy: StrategyId; kind
   const pair = pairLabel(a.symbol);
   const early = a.kind === "POTENTIAL";
   const title = `${early ? "EARLY · unconfirmed" : "CONFIRMED"} · ${STRATEGY_LABEL[a.strategy]} · ${pair}`;
-  const body = `${early ? "Candle still open. " : "Closed-candle conditions met. "}Signal ${fmtPrice(a.signalPrice)} · latest ${fmtPrice(a.latestPrice)} · ${ageLabel(a.at, a.now)}. Analysis only, no order placed, not guaranteed.`;
+  const body = `${early ? "Candle still open. " : "Closed-candle conditions met. "}Signal ${fmtPrice(a.signalPrice)} at ${new Date(a.at).toISOString().slice(11, 19)} UTC · latest ${fmtPrice(a.latestPrice)} · ${ageLabel(a.at, a.now)}. Analysis only, no order placed, not guaranteed.`;
   return { title, body, tag: `setup-${a.symbol}-${a.strategy}-${a.kind}`, url: "/" };
 }

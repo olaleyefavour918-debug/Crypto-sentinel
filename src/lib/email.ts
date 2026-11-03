@@ -3,6 +3,7 @@ import type { Db, Queryable, Row } from "./db";
 import { logger } from "./logger";
 import { baseOf, fmtPrice, pairLabel } from "./format";
 import { fmtUtc } from "./time";
+import { MARK_PRICE_NOTE, SOURCE_LABEL, type PriceRef } from "./priceaudit";
 import { sendSmtp, type SmtpOptions } from "./smtp";
 import type { Settings, TimeframeSnapshot } from "./types";
 
@@ -36,7 +37,18 @@ export interface EmailConfig {
 }
 
 export const MAX_ATTEMPTS = 5;
-const STALE_ALERT_MS = 24 * 3600_000;
+/** An alert that could not be sent within 2 hours is dropped: by then it is history, not a signal. */
+const STALE_ALERT_MS = 2 * 3600_000;
+/** An alert sent later than this is clearly marked DELAYED so it is never read as a current signal. */
+export const DELAYED_ALERT_MS = 15 * 60_000;
+
+export function delayedNotice(createdAtMs: number, nowMs: number): { subjectPrefix: string; text: string; html: string } | null {
+  const lateMin = Math.round((nowMs - createdAtMs) / 60_000);
+  if (nowMs - createdAtMs <= DELAYED_ALERT_MS) return null;
+  const when = new Date(createdAtMs).toISOString().replace("T", " ").slice(0, 19) + " UTC";
+  const text = `DELAYED ALERT: this signal was generated at ${when}, ${lateMin} minutes before this email was sent. The price may have moved since; check the live Bybit price before acting. This is not a current signal.`;
+  return { subjectPrefix: "[DELAYED] ", text, html: `<p style="background:#fff3cd;color:#664d03;padding:10px;border-radius:6px;font-weight:600">${text}</p>` };
+}
 
 export function emailConfig(env: Env = process.env): EmailConfig {
   const webhookConfigured = !!env.RESEND_WEBHOOK_SECRET;
@@ -66,6 +78,20 @@ export function parseFrom(from: string): { name: string; email: string } | null 
 }
 
 // ── Message content ──────────────────────────────────────────────────────────
+/** Rows describing exactly which price a signal used, where it came from and when, so the alert can be audited later. */
+export function priceAuditRows(ref: PriceRef | null | undefined): Array<[string, string]> {
+  if (!ref) return [];
+  const rows: Array<[string, string]> = [
+    ["Signal generated (UTC)", fmtUtc(ref.scanAt)],
+    ["Reference price source", SOURCE_LABEL[ref.source]],
+  ];
+  if (ref.exchangeTime !== null) rows.push(["Bybit ticker timestamp (UTC)", fmtUtc(ref.exchangeTime)]);
+  rows.push(["Bybit index price (separate)", ref.indexPrice === null ? "not provided in this response" : `${fmtPrice(ref.indexPrice)} USDT`]);
+  rows.push(["Mark price", MARK_PRICE_NOTE]);
+  if (ref.bid !== null && ref.ask !== null) rows.push(["Best bid / ask", `${fmtPrice(ref.bid)} / ${fmtPrice(ref.ask)} USDT`]);
+  return rows;
+}
+
 export interface TradeEmailData {
   symbol: string;
   type: "BUY" | "SELL";
@@ -83,6 +109,8 @@ export interface TradeEmailData {
   exitFee?: number;
   netPnl?: number;
   feeRatePct: number;
+  /** Price snapshot taken at the scan that produced this trade (optional for older callers). */
+  ref?: PriceRef | null;
 }
 
 export interface EmailMessage {
@@ -111,6 +139,7 @@ export function buildTradeEmail(d: TradeEmailData): EmailMessage {
     ["Pair", `${pair} Spot`],
     ["Reference price", `${px(d.price)} USDT`],
     ["Time (UTC)", fmtUtc(d.at)],
+    ...priceAuditRows(d.ref),
     ["Reason", d.reason],
     ["Simulated trade amount", `${usd(d.amountUsdt)} USDT`],
     [`Simulated ${base} quantity`, `${d.quantity.toFixed(8)} ${base}`],
@@ -333,7 +362,11 @@ export async function attemptSend(db: Db, id: number, deps: EmailDeps = {}): Pro
     return "expired";
   }
 
-  const result = await sendViaProvider(cfg, { subject: row.subject, text: row.text_body, html: row.html_body }, row.recipient, String(row.dedupe_key), deps);
+  const late = row.kind !== "TEST" && !String(row.subject).startsWith("[DELAYED]") ? delayedNotice(createdAt, now) : null;
+  const payload = late
+    ? { subject: late.subjectPrefix + row.subject, text: late.text + "\n\n" + row.text_body, html: late.html + String(row.html_body) }
+    : { subject: row.subject, text: row.text_body, html: row.html_body };
+  const result = await sendViaProvider(cfg, payload, row.recipient, String(row.dedupe_key), deps);
   if (result.ok) {
     await db.query(
       "update email_notifications set status = 'accepted', provider = $2, provider_message_id = $3, accepted_at = now(), last_error = null, updated_at = now() where id = $1",

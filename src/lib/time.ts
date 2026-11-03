@@ -29,3 +29,13 @@ export function ageLabel(ms: number | null, now: number): string {
   if (h < 48) return `${h}h ${m % 60}m ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
+
+/** The viewer's local time with its zone name, for display only. Internal values and emails stay UTC. `tz` is injectable for tests. */
+export function fmtLocal(ms: number | null | undefined, tz?: string): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—";
+  try {
+    return new Intl.DateTimeFormat("en-GB", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: tz, timeZoneName: "short" }).format(new Date(ms));
+  } catch {
+    return fmtUtc(ms);
+  }
+}

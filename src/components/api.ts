@@ -15,6 +15,8 @@ export interface AppState {
   /** LONG/SHORT/NEUTRAL analysis (optional so older cached responses still render). */
   directional?: DirectionalSummary;
   setups?: import("@/lib/setups-run").SetupsSummary;
+  /** Measured alert delays (optional so older responses still render). */
+  delivery?: import("@/lib/store").DeliveryStats | null;
   trades: TradeEvent[];
   notifications: NotificationRow[];
   evaluations: EvaluationRow[];

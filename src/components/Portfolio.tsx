@@ -1,6 +1,7 @@
+import { SOURCE_LABEL } from "@/lib/priceaudit";
 import { baseOf, fmtPct, fmtPrice, fmtQty, fmtSigned, fmtUsdt } from "@/lib/format";
 import type { Account, Asset, Position, TradeEvent, TradeStats } from "@/lib/store";
-import { ageLabel, fmtUtcShort } from "@/lib/time";
+import { ageLabel, fmtUtc, fmtUtcShort } from "@/lib/time";
 import { notificationLabel, portfolioView, type Tone } from "@/lib/viewmodel";
 import { Card, Empty, Notice, Pill, Stat } from "./ui";
 
@@ -89,6 +90,7 @@ export function TradeHistory({ trades }: { trades: TradeEvent[] }) {
                     <td className="pr-3 font-medium">{baseOf(t.symbol)}</td>
                     <td className="pr-3">
                       <Pill tone={t.type === "BUY" ? "good" : "neutral"}>{t.type === "BUY" ? "Paper BUY" : "Paper SELL"}</Pill>
+                      {t.ref && <details className="mt-1 max-w-[260px] text-xs text-fg-mute"><summary className="cursor-pointer select-none">Price audit</summary><p className="mt-1 break-words">Reference {fmtPrice(t.ref.last)} USDT · {SOURCE_LABEL[t.ref.source]} · generated {fmtUtc(t.ref.scanAt)}{t.ref.exchangeTime ? ` (Bybit ticker ${fmtUtc(t.ref.exchangeTime).slice(11)})` : ""} · index {t.ref.indexPrice === null ? "n/a" : fmtPrice(t.ref.indexPrice)} (spot has no mark price){t.alertDelayMs !== null ? ` · alert handed to push ${(t.alertDelayMs / 1000).toFixed(1)} s after the trade` : ""}</p></details>}
                       <details className="mt-1 max-w-[260px] text-xs text-fg-mute"><summary className="cursor-pointer select-none">Reason</summary><p className="mt-1 whitespace-pre-wrap break-words">{t.reason}</p></details>
                     </td>
                     <td className="num pr-3 text-right">{fmtPrice(t.price)}</td>

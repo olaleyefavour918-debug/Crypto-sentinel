@@ -4,6 +4,7 @@ import { isUniqueViolation, type Db, type Row } from "./db";
 import { buildTradeEmail, processEmailQueue, queueTradeEmail, type EmailDeps } from "./email";
 import { logger } from "./logger";
 import { pushNewSetups, pushNewSignals, pushNewTrades, type PushDeps } from "./webpush";
+import { buildPriceRef, type PriceRef } from "./priceaudit";
 import { processSetups } from "./setups-run";
 import { processDirectional } from "./directional-run";
 import { balanceAfterClose, balanceAfterOpen, computeClose, roundPrice, simulatedQuantity } from "./paper";
@@ -324,7 +325,7 @@ async function processAsset(
       const px = roundPrice(ticker.lastPrice);
       const decision = evaluateExit({ position: open, currentPrice: px, h1: h1Snap });
       if (decision.exit && decision.reason) {
-        const closed = await closePosition(db, open.id, symbol, px, nowMs, `${decision.reason}: ${decision.detail}`, decision.reason, h1Snap, h4Snap, settings);
+        const closed = await closePosition(db, open.id, symbol, px, nowMs, `${decision.reason}: ${decision.detail}`, decision.reason, h1Snap, h4Snap, settings, buildPriceRef({ ticker, fallbackPrice: null, fallbackSource: "last_closed_candle", scanAt: nowMs }));
         if (closed) {
           justClosed = true;
           stateLabel = "CLOSED_WAITING_REARM";
@@ -346,7 +347,7 @@ async function processAsset(
       if (nowMs - candleClose > settings.entryWindowMinutes * 60_000) {
         stateLabel = "SIGNAL_WINDOW_PASSED";
       } else {
-        const outcome = await openPosition(db, symbol, evaluation, roundPrice(ticker.lastPrice), nowMs, settings);
+        const outcome = await openPosition(db, symbol, evaluation, roundPrice(ticker.lastPrice), nowMs, settings, buildPriceRef({ ticker, fallbackPrice: null, fallbackSource: "last_closed_candle", scanAt: nowMs }));
         actions.push(`${base}: ${outcome}`);
         stateLabel = "POSITION_OPEN";
       }
@@ -368,7 +369,7 @@ async function processAsset(
   // ── Setup engine (Trend early read, Support-Bounce, Exit warning): separate, opens no paper trade, can never break anything above ──
   if (klinesOk) {
     try {
-      actions.push(...(await processSetups(db, { symbol, enabled: asset.enabled, settings, h1All: data.h1 as Candle[], h4All: data.h4 as Candle[], price: ticker?.lastPrice ?? null, nowMs, btcH4Closed })));
+      actions.push(...(await processSetups(db, { symbol, enabled: asset.enabled, settings, h1All: data.h1 as Candle[], h4All: data.h4 as Candle[], price: ticker?.lastPrice ?? null, ticker: ticker ?? null, nowMs, btcH4Closed })));
     } catch (e) {
       logger.warn("monitor.setups_failed", { symbol, error: sanitizeError(e) });
     }
@@ -381,7 +382,7 @@ async function processAsset(
   return { symbol, ok, actions, errors, evaluationStatus: stateLabel ?? undefined, price: ticker?.lastPrice };
 }
 
-async function openPosition(db: Db, symbol: string, ev: BuyEvaluation, price: number, nowMs: number, settings: Settings): Promise<string> {
+async function openPosition(db: Db, symbol: string, ev: BuyEvaluation, price: number, nowMs: number, settings: Settings, ref: PriceRef | null = null): Promise<string> {
   const candleStart = ev.h1CandleStart as number;
   try {
     return await db.tx(async (q) => {
@@ -403,15 +404,15 @@ async function openPosition(db: Db, symbol: string, ev: BuyEvaluation, price: nu
       const positionId = Number(pos.id);
       const trade = (
         await q.query<Row>(
-          `insert into paper_trades (symbol, position_id, event_type, event_key, occurred_at, price, amount_usdt, quantity, reason, indicators)
-           values ($9, $1, 'BUY', $2, $3::timestamptz, $4, $5, $6, $7, $8::jsonb) returning id`,
-          [positionId, `BUY:${symbol}:${candleStart}`, ts(nowMs), price, amount, qty, reason, JSON.stringify(ev.indicators), symbol],
+          `insert into paper_trades (symbol, position_id, event_type, event_key, occurred_at, price, amount_usdt, quantity, reason, indicators, ref)
+           values ($9, $1, 'BUY', $2, $3::timestamptz, $4, $5, $6, $7, $8::jsonb, $10::jsonb) returning id`,
+          [positionId, `BUY:${symbol}:${candleStart}`, ts(nowMs), price, amount, qty, reason, JSON.stringify(ev.indicators), symbol, ref ? JSON.stringify(ref) : null],
         )
       ).rows[0];
       await q.query("update paper_account set available_balance = $1, updated_at = now() where id = 1", [balanceAfterOpen(available, amount)]);
       const message = buildTradeEmail({
         symbol, type: "BUY", price, at: nowMs, reason, h1: ev.indicators.h1, h4: ev.indicators.h4,
-        amountUsdt: amount, quantity: qty, entryPrice: price, feeRatePct: settings.feeRatePct,
+        amountUsdt: amount, quantity: qty, entryPrice: price, feeRatePct: settings.feeRatePct, ref,
       });
       await queueTradeEmail(q, { tradeId: Number(trade.id), kind: "BUY", settings, message });
       return `simulated BUY of ${amount} USDT (${qty.toFixed(8)} ${baseOf(symbol)}) at ${price}`;
@@ -424,7 +425,7 @@ async function openPosition(db: Db, symbol: string, ev: BuyEvaluation, price: nu
 
 async function closePosition(
   db: Db, positionId: number, symbol: string, price: number, nowMs: number, reason: string, exitReason: string,
-  h1: TimeframeSnapshot | null, h4: TimeframeSnapshot | null, settings: Settings,
+  h1: TimeframeSnapshot | null, h4: TimeframeSnapshot | null, settings: Settings, ref: PriceRef | null = null,
 ): Promise<boolean> {
   return db.tx(async (q) => {
     const row = (await q.query<Row>("select * from paper_positions where id = $1 and status = 'open' for update", [positionId])).rows[0];
@@ -437,10 +438,10 @@ async function closePosition(
       [positionId, ts(nowMs), price, exitReason, calc.grossPnl, calc.entryFee, calc.exitFee, calc.netPnl],
     );
     const trade = await q.query<Row>(
-      `insert into paper_trades (symbol, position_id, event_type, event_key, occurred_at, price, amount_usdt, quantity, reason, indicators, gross_pnl, entry_fee, exit_fee, net_pnl)
-       values ($13, $1, 'SELL', $2, $3::timestamptz, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12)
+      `insert into paper_trades (symbol, position_id, event_type, event_key, occurred_at, price, amount_usdt, quantity, reason, indicators, gross_pnl, entry_fee, exit_fee, net_pnl, ref)
+       values ($13, $1, 'SELL', $2, $3::timestamptz, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $14::jsonb)
        on conflict (event_key) do nothing returning id`,
-      [positionId, `SELL:${positionId}`, ts(nowMs), price, pos.amountUsdt, pos.quantity, reason, JSON.stringify({ h1, h4 }), calc.grossPnl, calc.entryFee, calc.exitFee, calc.netPnl, symbol],
+      [positionId, `SELL:${positionId}`, ts(nowMs), price, pos.amountUsdt, pos.quantity, reason, JSON.stringify({ h1, h4 }), calc.grossPnl, calc.entryFee, calc.exitFee, calc.netPnl, symbol, ref ? JSON.stringify(ref) : null],
     );
     // Disarm: the next BUY alert for this coin requires the entry conditions to lapse and then match again.
     await q.query("update assets set signal_armed = false where symbol = $1", [symbol]);
@@ -450,7 +451,7 @@ async function closePosition(
       const message = buildTradeEmail({
         symbol, type: "SELL", price, at: nowMs, reason, h1, h4, amountUsdt: pos.amountUsdt, quantity: pos.quantity,
         entryPrice: pos.entryPrice, exitPrice: price, grossPnl: calc.grossPnl, entryFee: calc.entryFee, exitFee: calc.exitFee,
-        netPnl: calc.netPnl, feeRatePct: pos.feeRatePct,
+        netPnl: calc.netPnl, feeRatePct: pos.feeRatePct, ref,
       });
       await queueTradeEmail(q, { tradeId: Number(trade.rows[0].id), kind: "SELL", settings, message });
     }

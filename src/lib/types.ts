@@ -29,6 +29,11 @@ export interface Ticker24h {
   turnover24h: number;
   /** Exchange response timestamp, epoch ms. */
   serverTime: number;
+  /** Bybit's index price for the pair (usdIndexPrice), when the response includes it. Bybit publishes NO mark price for spot. */
+  indexPrice?: number | null;
+  /** Best bid / ask at response time, when included. */
+  bid?: number | null;
+  ask?: number | null;
 }
 
 export interface Settings {

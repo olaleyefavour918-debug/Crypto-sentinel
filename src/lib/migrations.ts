@@ -332,6 +332,17 @@ alter table email_notifications drop constraint if exists email_notifications_ki
 alter table email_notifications add constraint email_notifications_kind_check check (kind in ('BUY','SELL','TEST','LONG','SHORT','EARLY','SETUP'));
 `,
   },
+  {
+    id: "008_price_audit",
+    // Audit trail for every signal's prices. `ref` snapshots are written once per event and never overwritten, so the
+    // price at the moment of the signal is always preserved next to the latest price.
+    sql: `
+alter table setups add column if not exists signal_ref jsonb;
+alter table setups add column if not exists last_ref jsonb;
+alter table setup_events add column if not exists ref jsonb;
+alter table paper_trades add column if not exists ref jsonb;
+`,
+  },
 ];
 
 const setupMemo = new WeakMap<object, Promise<void>>();

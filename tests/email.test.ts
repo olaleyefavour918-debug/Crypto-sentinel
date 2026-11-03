@@ -163,7 +163,7 @@ describe("notification queue: retries, claims and expiry", () => {
   });
 
   it("an alert older than 24 h is not sent (a stale BUY/SELL would mislead), but nothing is silently dropped", async () => {
-    const id = await queued("BUY", 25 * 3600_000);
+    const id = await queued("BUY", 3 * 3600_000);
     const calls: EmailCall[] = [];
     assert.equal(await attemptSend(db, id, { env: { RESEND_API_KEY: KEY }, fetchFn: emailFetch([ok()], calls) }), "expired");
     assert.equal(calls.length, 0);

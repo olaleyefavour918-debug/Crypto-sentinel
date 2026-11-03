@@ -2,11 +2,13 @@
 import { useState } from "react";
 import { fmtPrice, pairLabel } from "@/lib/format";
 import { setupFreshness } from "@/lib/freshness";
-import { validityText } from "@/lib/lifecycle";
+import { LIFECYCLE, validityText } from "@/lib/lifecycle";
+import { validityState } from "@/lib/priceaudit";
 import { STRATEGY_LABEL } from "@/lib/setups";
 import type { SetupView, SetupsSummary } from "@/lib/setups-run";
 import { ageLabel, fmtUtc } from "@/lib/time";
 import type { Settings } from "@/lib/types";
+import PriceAudit from "./PriceAudit";
 import { Card, Empty, Notice, Pill } from "./ui";
 
 type Tab = "early" | "confirmed" | "exit" | "other";
@@ -54,6 +56,17 @@ function Card1({ s, now }: { s: SetupView; now: number }) {
         <div><dt className="text-xs text-fg-mute">Timeframe</dt><dd>1H setup · 4H context</dd></div>
         <div><dt className="text-xs text-fg-mute">Validity</dt><dd>{validityText(s, now)}</dd></div>
       </dl>
+      <PriceAudit
+        generatedAt={s.signalRef?.scanAt ?? s.signalPriceAt}
+        reference={s.signalRef}
+        latest={s.lastPrice}
+        latestAt={s.lastScanAt}
+        latestRef={s.lastRef}
+        now={now}
+        validity={validityState(s, now, LIFECYCLE.validMs)}
+        alertNote={s.alertSentAt !== null ? `sent ${s.alertDelayMs !== null ? `${(s.alertDelayMs / 1000).toFixed(1)} s after detection` : "to the push sender"} (handed to the push service; delivery to the phone is not confirmed)` : "no alert for this status (recording only, or not selected for an alert)"}
+      />
+      {s.earlyRef && s.status !== "POTENTIAL" && <p className="mt-1 text-xs text-fg-mute">Early read was raised at {fmtPrice(s.earlyRef.last)} on {s.earlyAt ? fmtUtc(s.earlyAt) : "—"}; the confirmed reference above is a separate, later price.</p>}
       {fresh.stale && <p className="mt-2 text-xs text-down">STALE: this setup was last checked {ageLabel(s.lastScanAt, now)}. The prices shown may be out of date until the next successful scan.</p>}
       {s.status === "POTENTIAL" && <p className="mt-2 text-xs text-warn">Based on the 1H candle that is still forming. It can disappear before the candle closes.</p>}
       {s.levels && s.status !== "WATCH" && (

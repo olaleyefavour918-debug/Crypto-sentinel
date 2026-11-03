@@ -21,6 +21,20 @@ export default function Health({ state }: { state: AppState }) {
       </div>
       {m.cadenceMinutes !== null && <p className="mt-3 text-xs text-fg-mute">Observed cadence: one run about every {m.cadenceMinutes} min (measured from recorded runs, not assumed).</p>}
 
+      {state.jobRuns[0]?.timings && (
+        <p className="mt-2 text-xs text-fg-mute" data-testid="scan-timings">
+          Last scan took {(state.jobRuns[0].timings.totalMs / 1000).toFixed(1)}s: Bybit tickers {(state.jobRuns[0].timings.tickersMs / 1000).toFixed(1)}s · candles {(state.jobRuns[0].timings.klinesMs / 1000).toFixed(1)}s · evaluation {(state.jobRuns[0].timings.evaluateMs / 1000).toFixed(1)}s · email {(state.jobRuns[0].timings.emailMs / 1000).toFixed(1)}s · push {(state.jobRuns[0].timings.pushMs / 1000).toFixed(1)}s.
+          {state.jobRuns[0].status !== "success" ? " The last scan did not complete cleanly (see the table below)." : ""}
+        </p>
+      )}
+      {state.delivery && (state.delivery.push.n > 0 || state.delivery.email.n > 0) && (
+        <p className="mt-1 text-xs text-fg-mute" data-testid="delivery-delay">
+          Alert delay, last {state.delivery.windowDays} days (median / slowest):
+          {state.delivery.push.n > 0 ? ` push handed to the sender in ${fmtDelay(state.delivery.push.medianMs)} / ${fmtDelay(state.delivery.push.maxMs)} (${state.delivery.push.n} alerts; this is not proof the phone received it)` : ""}
+          {state.delivery.email.n > 0 ? ` · email accepted by the provider in ${fmtDelay(state.delivery.email.medianMs)} / ${fmtDelay(state.delivery.email.maxMs)} (${state.delivery.email.n} emails; accepted is not inbox delivery)` : ""}
+        </p>
+      )}
+
       {open.length > 0 && (
         <div className="mt-5">
           <Notice tone="warn" title={`${open.length} setup step${open.length > 1 ? "s" : ""} still open`}>
@@ -60,4 +74,9 @@ export default function Health({ state }: { state: AppState }) {
       </details>
     </Card>
   );
+}
+
+function fmtDelay(ms: number | null): string {
+  if (ms === null) return "—";
+  return ms < 60_000 ? `${(ms / 1000).toFixed(0)}s` : `${(ms / 60_000).toFixed(1)} min`;
 }
