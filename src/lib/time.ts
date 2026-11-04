@@ -39,3 +39,14 @@ export function fmtLocal(ms: number | null | undefined, tz?: string): string {
     return fmtUtc(ms);
   }
 }
+
+/** Nigeria (West Africa Time) is UTC+1 all year with no daylight saving, so a fixed offset is exact. */
+export function fmtWat(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—";
+  return new Date(ms + 3_600_000).toISOString().replace("T", " ").slice(0, 19) + " WAT";
+}
+
+/** "HH:MM:SS WAT (HH:MM:SS UTC)" for short push text. */
+export function clockWatUtc(ms: number): string {
+  return `${new Date(ms + 3_600_000).toISOString().slice(11, 19)} WAT (${new Date(ms).toISOString().slice(11, 19)} UTC)`;
+}

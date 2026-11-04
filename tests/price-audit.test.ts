@@ -107,3 +107,22 @@ describe("trade audit trail in the database", () => {
     for (const c of h.calls) assert.match(String(c.body.text), /Signal generated|generated/i);
   });
 });
+
+import { fmtWat, clockWatUtc } from "@/lib/time";
+import { fmtPrice } from "@/lib/format";
+import { tradePushPayload } from "@/lib/webpush";
+describe("Nigeria time and tiny prices in alerts", () => {
+  it("WAT is UTC+1 and the push shows both clocks", () => {
+    const t = Date.UTC(2026, 10, 4, 8, 21, 23);
+    assert.equal(fmtWat(t), "2026-11-04 09:21:23 WAT");
+    assert.equal(clockWatUtc(t), "09:21:23 WAT (08:21:23 UTC)");
+    const p = tradePushPayload({ symbol: "PEPEUSDT", type: "SELL", price: 0.000005123, netPnl: -0.1, at: t });
+    assert.match(p.body, /09:21:23 WAT \(08:21:23 UTC\)/);
+    assert.match(p.body, /0\.000005123/);
+  });
+  it("small prices keep their significant digits; normal prices are unchanged", () => {
+    assert.equal(fmtPrice(0.000005123), "0.000005123");
+    assert.equal(fmtPrice(0.6175923), "0.617592");
+    assert.equal(fmtPrice(61759.237), "61,759.24");
+  });
+});

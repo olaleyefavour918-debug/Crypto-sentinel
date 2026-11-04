@@ -1,3 +1,4 @@
+import { clockWatUtc } from "./time";
 import { createECDH, createCipheriv, createPrivateKey, generateKeyPairSync, hkdfSync, randomBytes, sign } from "node:crypto";
 import type { Db, Queryable, Row } from "./db";
 import { logger } from "./logger";
@@ -149,7 +150,7 @@ export async function pushToAll(db: Db, payload: PushPayload, deps: PushDeps = {
 }
 
 export function tradePushPayload(t: { symbol: string; type: string; price: number; netPnl: number | null; at?: number }): PushPayload {
-  const when = t.at === undefined ? "" : ` at ${new Date(t.at).toISOString().slice(11, 19)} UTC`;
+  const when = t.at === undefined ? "" : ` at ${clockWatUtc(t.at)}`;
   const pair = pairLabel(t.symbol);
   if (t.type === "BUY") {
     return { title: `BUY signal · ${pair}`, body: `Paper BUY at ${fmtPrice(t.price)} USDT${when} (Bybit spot last price). Review the chart and decide for yourself. No real order was placed.`, tag: `trade-${t.symbol}-BUY`, url: "/" };

@@ -2,7 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Db, Queryable, Row } from "./db";
 import { logger } from "./logger";
 import { baseOf, fmtPrice, pairLabel } from "./format";
-import { fmtUtc } from "./time";
+import { fmtUtc, fmtWat } from "./time";
 import { MARK_PRICE_NOTE, SOURCE_LABEL, type PriceRef } from "./priceaudit";
 import { sendSmtp, type SmtpOptions } from "./smtp";
 import type { Settings, TimeframeSnapshot } from "./types";
@@ -45,7 +45,7 @@ export const DELAYED_ALERT_MS = 15 * 60_000;
 export function delayedNotice(createdAtMs: number, nowMs: number): { subjectPrefix: string; text: string; html: string } | null {
   const lateMin = Math.round((nowMs - createdAtMs) / 60_000);
   if (nowMs - createdAtMs <= DELAYED_ALERT_MS) return null;
-  const when = new Date(createdAtMs).toISOString().replace("T", " ").slice(0, 19) + " UTC";
+  const when = `${fmtWat(createdAtMs)} (${new Date(createdAtMs).toISOString().replace("T", " ").slice(0, 19)} UTC)`;
   const text = `DELAYED ALERT: this signal was generated at ${when}, ${lateMin} minutes before this email was sent. The price may have moved since; check the live Bybit price before acting. This is not a current signal.`;
   return { subjectPrefix: "[DELAYED] ", text, html: `<p style="background:#fff3cd;color:#664d03;padding:10px;border-radius:6px;font-weight:600">${text}</p>` };
 }
@@ -82,6 +82,7 @@ export function parseFrom(from: string): { name: string; email: string } | null 
 export function priceAuditRows(ref: PriceRef | null | undefined): Array<[string, string]> {
   if (!ref) return [];
   const rows: Array<[string, string]> = [
+    ["Signal generated (Nigeria time)", fmtWat(ref.scanAt)],
     ["Signal generated (UTC)", fmtUtc(ref.scanAt)],
     ["Reference price source", SOURCE_LABEL[ref.source]],
   ];
@@ -138,6 +139,7 @@ export function buildTradeEmail(d: TradeEmailData): EmailMessage {
     ["Event", `PAPER ${d.type} (simulated)`],
     ["Pair", `${pair} Spot`],
     ["Reference price", `${px(d.price)} USDT`],
+    ["Time (Nigeria time)", fmtWat(d.at)],
     ["Time (UTC)", fmtUtc(d.at)],
     ...priceAuditRows(d.ref),
     ["Reason", d.reason],

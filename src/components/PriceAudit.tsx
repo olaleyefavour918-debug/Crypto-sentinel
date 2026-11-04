@@ -1,6 +1,6 @@
 import { fmtPrice } from "@/lib/format";
 import { MARK_PRICE_NOTE, SOURCE_LABEL, priceDiff, signalAgeMinutes, type PriceRef, type Validity } from "@/lib/priceaudit";
-import { ageLabel, fmtUtc, fmtLocal } from "@/lib/time";
+import { ageLabel, fmtUtc, fmtWat } from "@/lib/time";
 
 const signed = (n: number, dp: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(dp)}`;
 
@@ -26,7 +26,7 @@ export default function PriceAudit({ generatedAt, reference, latest, latestAt, l
     <details className="mt-2 rounded-lg border border-line-2 bg-white/[0.03] px-3 py-2 text-sm" data-testid="price-audit">
       <summary className="cursor-pointer select-none text-fg-dim">Price audit · Bybit spot</summary>
       <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
-        <div><dt className="text-xs text-fg-mute">Signal generated (UTC)</dt><dd className="num">{generatedAt !== null ? fmtUtc(generatedAt) : "—"}{generatedAt !== null ? <span className="block text-fg-mute">Your time: {fmtLocal(generatedAt)}</span> : null}{reference?.exchangeTime ? <span className="text-fg-mute"> · Bybit ticker time {fmtUtc(reference.exchangeTime).slice(11)}</span> : null}</dd></div>
+        <div><dt className="text-xs text-fg-mute">Signal generated (UTC)</dt><dd className="num">{generatedAt !== null ? fmtUtc(generatedAt) : "—"}{generatedAt !== null ? <span className="block text-fg-mute">Nigeria time: {fmtWat(generatedAt)}</span> : null}{reference?.exchangeTime ? <span className="text-fg-mute"> · Bybit ticker time {fmtUtc(reference.exchangeTime).slice(11)}</span> : null}</dd></div>
         <div><dt className="text-xs text-fg-mute">Signal age</dt><dd className="num">{age === null ? "—" : `${age} min`}</dd></div>
         <div><dt className="text-xs text-fg-mute">Reference price (kept, never replaced)</dt><dd className="num">{reference ? `${fmtPrice(reference.last)} USDT` : "not recorded (signal predates price auditing)"}</dd></div>
         <div><dt className="text-xs text-fg-mute">Latest last-traded price</dt><dd className="num">{latest !== null ? `${fmtPrice(latest)} USDT` : "—"}{latestAt !== null ? <span className="text-fg-mute"> · checked {ageLabel(latestAt, now)}</span> : null}</dd></div>

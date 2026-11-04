@@ -4,7 +4,7 @@
 export function fmtPrice(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";
   const a = Math.abs(n);
-  const dp = a >= 1000 ? 2 : a >= 100 ? 2 : a >= 1 ? 4 : 6;
+  const dp = a >= 1000 ? 2 : a >= 100 ? 2 : a >= 1 ? 4 : a >= 0.01 ? 6 : Math.min(10, 3 + Math.ceil(-Math.log10(a)));
   return n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
 

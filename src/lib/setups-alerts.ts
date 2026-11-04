@@ -3,7 +3,7 @@ import { fmtPrice, pairLabel } from "./format";
 import { validityText, type SetupState } from "./lifecycle";
 import { STRATEGY_LABEL, type StrategyId } from "./setups";
 import { priceDiff, signalAgeMinutes, type PriceRef } from "./priceaudit";
-import { ageLabel, fmtUtc } from "./time";
+import { ageLabel, clockWatUtc, fmtUtc, fmtWat } from "./time";
 
 /**
  * Text for setup alerts. Every alert states: coin, strategy, status (and whether it is confirmed), signal time and
@@ -52,6 +52,7 @@ export function buildSetupEmail(a: SetupAlert): EmailMessage {
     ["Status", label],
     ["Confirmation", confirmationText(a.kind)],
     ["Timeframe", "1H setup, 4H context (the market is rescanned continuously; see the Health panel for the observed rate)"],
+    ["Signal time (Nigeria time)", fmtWat(s.signalPriceAt)],
     ["Signal time (UTC)", fmtUtc(s.signalPriceAt)],
     ["Signal price", `${fmtPrice(sp)} USDT`],
     ["Latest price", `${fmtPrice(a.latestPrice)} USDT${move === null ? "" : ` (${move >= 0 ? "+" : "−"}${Math.abs(move).toFixed(2)}% since the signal)`}`],
@@ -102,6 +103,6 @@ export function setupPushPayload(a: { symbol: string; strategy: StrategyId; kind
   const pair = pairLabel(a.symbol);
   const early = a.kind === "POTENTIAL";
   const title = `${early ? "EARLY · unconfirmed" : "CONFIRMED"} · ${STRATEGY_LABEL[a.strategy]} · ${pair}`;
-  const body = `${early ? "Candle still open. " : "Closed-candle conditions met. "}Signal ${fmtPrice(a.signalPrice)} at ${new Date(a.at).toISOString().slice(11, 19)} UTC · latest ${fmtPrice(a.latestPrice)} · ${ageLabel(a.at, a.now)}. Analysis only, no order placed, not guaranteed.`;
+  const body = `${early ? "Candle still open. " : "Closed-candle conditions met. "}Signal ${fmtPrice(a.signalPrice)} at ${clockWatUtc(a.at)} · latest ${fmtPrice(a.latestPrice)} · ${ageLabel(a.at, a.now)}. Analysis only, no order placed, not guaranteed.`;
   return { title, body, tag: `setup-${a.symbol}-${a.strategy}-${a.kind}`, url: "/" };
 }
