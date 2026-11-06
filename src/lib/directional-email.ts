@@ -2,7 +2,7 @@ import type { Queryable, Row } from "./db";
 import type { DirectionalAssessment } from "./directional";
 import { MAX_HOLD_BARS } from "./directional";
 import { fmtPrice, pairLabel } from "./format";
-import { fmtUtc } from "./time";
+import { fmtUtc, fmtWat } from "./time";
 import type { Settings } from "./types";
 import type { EmailMessage } from "./email";
 
@@ -24,8 +24,9 @@ export function buildDirectionalEmail(d: { symbol: string; direction: "LONG" | "
   const rows: Array<[string, string]> = [
     ["Direction", `${d.direction} (analysis)`],
     ["Pair", `${pair} (Bybit spot data)`],
-    ["Reference price", `${p(a.price)} USDT (close of the 1h candle that started ${fmtUtc(a.candleStart)})`],
-    ["Evaluated", fmtUtc(d.evaluatedAt)],
+    ["Reference price", `${p(a.price)} USDT (close of the 1h candle that started ${fmtWat(a.candleStart)} / ${fmtUtc(a.candleStart)})`],
+    ["Evaluated (Nigeria time)", fmtWat(d.evaluatedAt)],
+    ["Evaluated (UTC)", fmtUtc(d.evaluatedAt)],
     ["Entry reference", `${p(lv.entry)} USDT`],
     ["Stop-loss reference", `${p(lv.stop)} USDT (${lv.riskPct.toFixed(2)}% ${d.direction === "LONG" ? "below" : "above"}, 1.5 × ATR)`],
     ["Take-profit reference", `${p(lv.takeProfit)} USDT (${lv.rewardPct.toFixed(2)}% ${d.direction === "LONG" ? "above" : "below"}, ${lv.targetBasis === "swing" ? "capped at the nearest support/resistance" : "2 × risk"})`],

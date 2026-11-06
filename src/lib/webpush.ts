@@ -206,7 +206,7 @@ export async function pushNewSignals(db: Db, deps: PushDeps = {}): Promise<{ sig
     `update directional_signals set push_sent_at = now()
        where id in (select id from directional_signals where push_sent_at is null and created_at >= $1::timestamptz order by id limit 20)
          and push_sent_at is null
-       returning id, symbol, direction, price_ref, stop, take_profit, risk_reward`,
+       returning id, symbol, direction, price_ref, stop, take_profit, risk_reward, created_at`,
     [cutoff],
   );
   await db.query("update directional_signals set push_sent_at = now() where push_sent_at is null and created_at < $1::timestamptz", [cutoff]);
@@ -215,7 +215,7 @@ export async function pushNewSignals(db: Db, deps: PushDeps = {}): Promise<{ sig
     const pair = pairLabel(String(r.symbol));
     const payload: PushPayload = {
       title: `${r.direction} analysis · ${pair}`,
-      body: `Reference ${fmtPrice(Number(r.price_ref))}, stop ${fmtPrice(Number(r.stop))}, target ${fmtPrice(Number(r.take_profit))}, reward/risk ${Number(r.risk_reward).toFixed(1)}. Analysis only, no order placed.`,
+      body: `At ${clockWatUtc(new Date(r.created_at as string).getTime())} · reference ${fmtPrice(Number(r.price_ref))}, stop ${fmtPrice(Number(r.stop))}, target ${fmtPrice(Number(r.take_profit))}, reward/risk ${Number(r.risk_reward).toFixed(1)}. Analysis only, no order placed.`,
       tag: `signal-${r.symbol}-${r.direction}`,
       url: "/",
     };

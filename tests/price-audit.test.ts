@@ -126,3 +126,13 @@ describe("Nigeria time and tiny prices in alerts", () => {
     assert.equal(fmtPrice(61759.237), "61,759.24");
   });
 });
+
+describe("every notification kind carries Nigeria time", () => {
+  it("no alert-building source prints a time without WAT beside it", () => {
+    for (const f of ["src/lib/email.ts", "src/lib/directional-email.ts", "src/lib/setups-alerts.ts", "src/lib/webpush.ts"]) {
+      const s = readFileSync(f, "utf8");
+      assert.match(s, /fmtWat|clockWatUtc/, f);
+    }
+    assert.doesNotMatch(readFileSync("src/lib/directional-email.ts", "utf8"), /\["Evaluated", fmtUtc/);
+  });
+});

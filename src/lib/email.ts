@@ -208,8 +208,8 @@ export function buildTradeEmail(d: TradeEmailData): EmailMessage {
 }
 
 export function buildTestEmail(now: number): EmailMessage {
-  const text = `Crypto Sentinel test email\n\nSent at ${fmtUtc(now)}.\nIf you can read this, your email provider accepted the message and routing to this address works.\n\nThis is only a test. No trade of any kind was executed.`;
-  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px"><h2 style="margin:0 0 8px">◆ Crypto Sentinel — test email</h2><p style="color:#444;line-height:1.5">Sent at ${esc(fmtUtc(now))}.<br>If you can read this, your email provider accepted the message and routing to this address works.</p><p style="color:#7a5200;background:#fff7e6;border:1px solid #ffe2a8;padding:10px;border-radius:8px;font-size:13px">This is only a test. No trade of any kind was executed.</p></div>`;
+  const text = `Crypto Sentinel test email\n\nSent at ${fmtWat(now)} (${fmtUtc(now)}).\nIf you can read this, your email provider accepted the message and routing to this address works.\n\nThis is only a test. No trade of any kind was executed.`;
+  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px"><h2 style="margin:0 0 8px">◆ Crypto Sentinel — test email</h2><p style="color:#444;line-height:1.5">Sent at ${esc(fmtWat(now))} (${esc(fmtUtc(now))}).<br>If you can read this, your email provider accepted the message and routing to this address works.</p><p style="color:#7a5200;background:#fff7e6;border:1px solid #ffe2a8;padding:10px;border-radius:8px;font-size:13px">This is only a test. No trade of any kind was executed.</p></div>`;
   return { subject: "[Crypto Sentinel] Test email", text, html };
 }
 
