@@ -1,7 +1,7 @@
 import { json, requireAdmin } from "@/lib/auth";
 import { internalError, withDb } from "@/lib/api";
 import { directionalSummary } from "@/lib/directional-run";
-import { deliveryStats } from "@/lib/store";
+import { deliveryStats, pushDeviceStatus } from "@/lib/store";
 import { setupsSummary } from "@/lib/setups-run";
 import { emailConfig } from "@/lib/email";
 import { assessMonitor, configStatus } from "@/lib/health";
@@ -29,9 +29,9 @@ export async function GET(req: Request) {
     const db = got.db;
     const now = Date.now();
     const settings = await loadSettings(db);
-    const [account, assets, positions, trades, notifications, evaluations, signals, jobRuns, marketApi, stats, directional, setups, delivery] = await Promise.all([
+    const [account, assets, positions, trades, notifications, evaluations, signals, jobRuns, marketApi, stats, directional, setups, delivery, pushStatus] = await Promise.all([
       getAccount(db), listAssets(db), listOpenPositions(db), listTrades(db, 100), listNotifications(db, 15), latestEvaluations(db),
-      lastSignals(db), recentJobRuns(db, 30), getKv(db, "market_api"), tradeStats(db), directionalSummary(db), setupsSummary(db, Date.now()), deliveryStats(db).catch(() => null),
+      lastSignals(db), recentJobRuns(db, 30), getKv(db, "market_api"), tradeStats(db), directionalSummary(db), setupsSummary(db, Date.now()), deliveryStats(db).catch(() => null), pushDeviceStatus(db).catch(() => null),
     ]);
     const cfg = emailConfig();
     return json({
@@ -45,6 +45,7 @@ export async function GET(req: Request) {
       directional,
       setups,
       delivery,
+      pushStatus,
       trades,
       notifications,
       evaluations,

@@ -27,6 +27,15 @@ export default function Health({ state }: { state: AppState }) {
           {state.jobRuns[0].status !== "success" ? " The last scan did not complete cleanly (see the table below)." : ""}
         </p>
       )}
+      {state.pushStatus && state.pushStatus.devices === 0 && (
+        <div className="mt-3" data-testid="push-none"><Notice tone="warn" title="No phone is subscribed for push alerts">Phone notifications will NOT be sent until a device is enabled. Open the Push panel on your phone and tap Enable, then Send test notification.</Notice></div>
+      )}
+      {state.pushStatus && state.pushStatus.devices > 0 && state.pushStatus.failingDevices > 0 && (
+        <div className="mt-3" data-testid="push-failing"><Notice tone="warn" title={`${state.pushStatus.failingDevices} of ${state.pushStatus.devices} subscribed phone(s) failed the last push`}>{state.pushStatus.lastError ?? "The push service did not accept the message."} The site retries on every scan for 15 minutes; reopen the site on that phone to refresh its subscription.</Notice></div>
+      )}
+      {state.pushStatus && state.pushStatus.devices > 0 && (
+        <p className="mt-1 text-xs text-fg-mute">Push: {state.pushStatus.devices} subscribed phone(s){state.pushStatus.lastSuccessAt ? `, last accepted by the push service ${ageLabel(state.pushStatus.lastSuccessAt, state.now)}` : ", none accepted yet"}.</p>
+      )}
       {state.delivery && (state.delivery.push.n > 0 || state.delivery.email.n > 0) && (
         <p className="mt-1 text-xs text-fg-mute" data-testid="delivery-delay">
           Alert delay, last {state.delivery.windowDays} days (median / slowest):

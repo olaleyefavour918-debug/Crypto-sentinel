@@ -8,6 +8,7 @@ import Chart from "./Chart";
 import Coins from "./Coins";
 import EmailPanel from "./EmailPanel";
 import PushPanel from "./PushPanel";
+import PushKeepAlive from "./PushKeepAlive";
 import AssistantPanel from "./AssistantPanel";
 import DirectionalPanel from "./DirectionalPanel";
 import SetupsPanel from "./SetupsPanel";
@@ -141,6 +142,7 @@ export default function Dashboard() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-16 sm:px-6">
+      <PushKeepAlive />
       <header className="sticky top-0 z-20 -mx-4 border-b border-line bg-ink/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">

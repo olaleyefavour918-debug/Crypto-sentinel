@@ -17,6 +17,7 @@ export interface AppState {
   setups?: import("@/lib/setups-run").SetupsSummary;
   /** Measured alert delays (optional so older responses still render). */
   delivery?: import("@/lib/store").DeliveryStats | null;
+  pushStatus?: import("@/lib/store").PushDeviceStatus | null;
   trades: TradeEvent[];
   notifications: NotificationRow[];
   evaluations: EvaluationRow[];

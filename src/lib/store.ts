@@ -254,6 +254,15 @@ function parseTimings(v: unknown): JobRunRow["timings"] {
   return Object.fromEntries(keys.map((k) => [k, t[k] as number])) as NonNullable<JobRunRow["timings"]>;
 }
 
+export interface PushDeviceStatus { devices: number; lastSuccessAt: number | null; lastError: string | null; failingDevices: number }
+
+/** How many phones are subscribed and whether the last send to them worked. A phone with no subscription gets NO push alerts. */
+export async function pushDeviceStatus(q: Queryable): Promise<PushDeviceStatus> {
+  const r = await q.query<Row>("select count(*)::int as n, max(last_success_at) as ok, count(*) filter (where failures > 0)::int as bad, max(last_error) as err from push_subscriptions");
+  const x = r.rows[0] ?? {};
+  return { devices: Number(x.n ?? 0), lastSuccessAt: toMs(x.ok), lastError: x.err ? String(x.err) : null, failingDevices: Number(x.bad ?? 0) };
+}
+
 export interface DelayStat { n: number; medianMs: number | null; maxMs: number | null }
 export interface DeliveryStats {
   /** Detection -> handed to the phone-push sender (claimed). This is NOT proof that the phone received it. */

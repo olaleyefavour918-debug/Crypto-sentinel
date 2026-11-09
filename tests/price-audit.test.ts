@@ -136,3 +136,19 @@ describe("every notification kind carries Nigeria time", () => {
     assert.doesNotMatch(readFileSync("src/lib/directional-email.ts", "utf8"), /\["Evaluated", fmtUtc/);
   });
 });
+
+import { pushDeviceStatus } from "@/lib/store";
+import { ensureSetup } from "@/lib/migrations";
+describe("push device status", () => {
+  let h: Harness;
+  before(async () => { h = await makeHarness(); await ensureSetup(h.t.db); });
+  after(async () => { await h.cleanup(); });
+  it("reports no devices, then a failing device with its error", async () => {
+    assert.equal((await pushDeviceStatus(h.t.db)).devices, 0);
+    await h.t.db.query("insert into push_subscriptions (endpoint, p256dh, auth, failures, last_error) values ('https://fcm.googleapis.com/x', 'a', 'b', 2, 'push service HTTP 503')");
+    const s = await pushDeviceStatus(h.t.db);
+    assert.equal(s.devices, 1);
+    assert.equal(s.failingDevices, 1);
+    assert.equal(s.lastError, "push service HTTP 503");
+  });
+});
