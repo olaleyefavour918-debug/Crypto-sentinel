@@ -1,0 +1,52 @@
+# Runs the monitor every minute from GitHub Actions, independent of Vercel.
+# GitHub's own "schedule" trigger is unreliable on this repo (runs were seen only every ~7 hours), so each run scans in a loop
+# for ~5h45m and then starts the next run itself. The "schedule" line is only a backup starter if the chain ever breaks.
+# Only one run is active at a time (concurrency); the database lease also blocks overlapping scans.
+#
+# Setup: repo -> Settings -> Secrets and variables -> Actions -> New repository secret. Copy the SAME values the Vercel project used:
+#   DATABASE_URL (required)  and the email variables you had: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS (Gmail), EMAIL_FROM
+name: scanner
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch: {}
+permissions:
+  actions: write
+  contents: read
+concurrency:
+  group: scanner
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Scan every minute
+        id: loop
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then echo "DATABASE_URL secret is not set"; exit 1; fi
+          npx tsx scripts/scan-loop.ts --minutes 345 --every 60
+      - name: Start the next run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_DB: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          # Never restart-loop a misconfigured scanner: without the database secret, stop and wait for the backup schedule.
+          if [ "$HAS_DB" != "true" ]; then echo "DATABASE_URL secret missing: not restarting"; exit 0; fi
+          [ "${{ steps.loop.outcome }}" = "success" ] || sleep 60
+          gh workflow run scanner.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}"
