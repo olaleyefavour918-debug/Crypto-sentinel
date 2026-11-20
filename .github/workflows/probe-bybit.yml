@@ -1,0 +1,16 @@
+# One-off, read-only: checks whether GitHub-hosted runners can reach Bybit's public market-data API (it blocks some regions).
+name: probe-bybit
+on:
+  workflow_dispatch: {}
+permissions: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: |
+          for h in api.bybit.com api.bytick.com api.bybit.nl; do
+            code=$(curl -sS -m 15 -o /tmp/o.json -w "%{http_code}" "https://$h/v5/market/tickers?category=spot&symbol=BTCUSDT" || echo curl-fail)
+            echo "$h -> $code $(head -c 120 /tmp/o.json 2>/dev/null)"
+          done
+          curl -sS -m 10 https://ipinfo.io/country || true
