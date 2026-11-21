@@ -5,12 +5,15 @@ on:
 permissions: {}
 jobs:
   probe:
+    strategy:
+      matrix:
+        n: [1, 2, 3, 4, 5, 6]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - run: |
-          for h in api.bybit.com api.bytick.com api.bybit.nl; do
+          for h in api.bybit.com api.bytick.com api.bybit.nl api.bybit.kz api.bybit-tr.com api.byhkg.net; do
             code=$(curl -sS -m 15 -o /tmp/o.json -w "%{http_code}" "https://$h/v5/market/tickers?category=spot&symbol=BTCUSDT" || echo curl-fail)
             echo "$h -> $code $(head -c 120 /tmp/o.json 2>/dev/null)"
           done
-          curl -sS -m 10 https://ipinfo.io/country || true
+          echo "runner country: $(curl -sS -m 10 https://ipinfo.io/country)"
