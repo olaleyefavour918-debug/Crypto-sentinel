@@ -9,7 +9,11 @@ name: scanner
 on:
   schedule:
     - cron: "7,37 * * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "How long to scan (default 345). A short value, e.g. 2, is a test run: it does not start a follow-up run."
+        default: "345"
 permissions:
   actions: write
   contents: read
@@ -39,14 +43,16 @@ jobs:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
         run: |
           if [ -z "$DATABASE_URL" ]; then echo "DATABASE_URL secret is not set"; exit 1; fi
-          npx tsx scripts/scan-loop.ts --minutes 345 --every 60
+          npx tsx scripts/scan-loop.ts --minutes "${{ inputs.minutes || 345 }}" --every 60
       - name: Start the next run
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           HAS_DB: ${{ secrets.DATABASE_URL != '' }}
+          MINUTES: ${{ inputs.minutes || 345 }}
         run: |
           # Never restart-loop a misconfigured scanner: without the database secret, stop and wait for the backup schedule.
+          if [ "$MINUTES" -lt 300 ]; then echo "short test run: not restarting"; exit 0; fi
           if [ "$HAS_DB" != "true" ]; then echo "DATABASE_URL secret missing: not restarting"; exit 0; fi
           [ "${{ steps.loop.outcome }}" = "success" ] || sleep 60
           gh workflow run scanner.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}"
